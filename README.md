@@ -1,89 +1,197 @@
-# Project Sovereign
+<div align="center">
 
-รีโปนี้มี **2 แอป** ที่ปล่อยแยกกัน แต่เก็บโค้ดไว้ที่เดียว
+<img src="docs/images/pos-demo.gif" alt="สาธิตจริง: หยิบสินค้าใส่ตะกร้า → กดขาย → ใบเสร็จเซ็น Ed25519 ในเครื่อง → ตัดเน็ตแล้วขายต่อได้" width="760">
 
-| ส่วน | ที่อยู่ในรีโป | ปล่อยที่ไหน | ตั้งค่าตอน deploy |
-|---|---|---|---|
-**เว็บสาธารณะ** (15 หน้า static) | root (`*.html`) | `sovereignoriginshop.dpdns.org` | GitHub Pages — workflow กรองเฉพาะไฟล์เว็บ |
-**Sovereign Scraper** (micro-SaaS) | [`scraper/`](scraper/) | `harvest-ledger.pages.dev` + `api.sovereignoriginshop.dpdns.org` | Vercel (frontend) + Railway (backend) |
+### 🛡️ Sovereign Offgrid
+**OFF-GRID EDGE APPLIANCE OS** — ระบบหลังบ้านที่ใช้เองได้เต็มรูปแบบ **โดยไม่พึ่งอินเทอร์เน็ตแม้แต่วินาทีเดียว**
 
-> ⚠️ `scraper/` **ไม่ถูกปล่อยไปกับเว็บ** — workflow ตรวจแล้ว fail ถ้าโค้ดหลุดขึ้น GitHub Pages
-> ดู [`scraper/README.md`](scraper/README.md) สำหรับวิธีรันและกฎความปลอดภัย
+ขายหน้าร้านออกใบเสร็จลายเซ็นดิจิทัล · คุยระหว่างเครื่องผ่านสัญญาณ LAN · แตะ NFC บันทึกงานฟาร์ม · อ่านค่าเซนเซอร์ Bluetooth · ติดตั้งเป็นแอป PWA บนมือถือ
 
-## เว็บสาธารณะ
+**เฟรมด้านบนคือการใช้งานจริงจากระบบ:** เพิ่มสินค้าลงตะกร้า → กด **ขายเลย** → ใบเสร็จถูกเซ็นด้วย **Ed25519** ในเบราว์เซอร์ → **ตัดเน็ตแล้วขายต่อได้** (สลิปขึ้นสถานะ `รอซิงก์`) → เน็ตกลับมา สลิปไหลเข้าบัญชีโหนดเอง
 
-เว็บโชว์ผลงานแบบ static หลายหน้า (`index.html` = ทัวร์ทั้งระบบ + `projects.html` = ผลงานทีละชิ้น + ฟอร์มติดต่อ + `livestock.html` = ปศุสัตว์ + `fishery.html` = แบบแปลนการประมง + `farm.html` = เกษตร&สมุนไพร + `iot.html` = บ้าน IoT + `education.html` = โมดูล AI สอนลูก + `water.html` = ชัยภูมิน้ำ (แนวคิดรางน้ำ-บ่อ-พื้นที่เพาะปลูกแบบค่ายกล 8 ทิศ) + `books.html` = คลังหนังสือของนักเขียน: ผลงานที่ลงพิมพ์+ลิงก์แหล่งเดิม และชั้นหนังสือที่อ่าน + `search.html` = ค้นหาทั้งเว็บจากช่องเดียว + `en.html` = หน้าแรกภาษาอังกฤษ + `me.html` = หน้ารวมช่องทางผู้เขียน (Person schema + link-in-bio สำหรับ SEO ชื่อ "กฤษกรณ์ อุตมะ / Krisakorn Utama") + `sitemap.xml`/`robots.txt` = ให้ bot ทุกตัว crawl ครบทุกหน้า) — ไม่มี build step ไม่มี dependency โฮสต์ฟรีด้วย GitHub Pages
+[![Live POS](https://img.shields.io/badge/%E2%9A%A1-LIVE_POS_WEB_APP-34d399?style=for-the-badge&labelColor=030712)](https://krisakornutama.github.io/sovereign-offgrid/sovereignty/public/shop.html)
+[![LAN Messenger](https://img.shields.io/badge/%F0%9F%92%AC-LAN_MESSENGER-22d3ee?style=for-the-badge&labelColor=030712)](https://krisakornutama.github.io/sovereign-offgrid/sovereignty/public/lan-messenger.html)
+[![Ed25519](https://img.shields.io/badge/%F0%9F%94%8F-ED25519_SIGNED_RECEIPTS-fbbf24?style=for-the-badge&labelColor=030712)](https://tools.ietf.org/html/rfc8032)
+[![Docker](https://img.shields.io/badge/%F0%9F%90%B3-DOCKER_COMPOSE_2_SERVICES-0db7ed?style=for-the-badge&labelColor=030712)](./docker-compose.yml)
 
-## ตรวจเว็บก่อนปล่อย
+</div>
 
-```bash
-npm install --no-fund --no-audit
-npx playwright install chromium      # จำเป็นสำหรับส่วนที่ตรวจในเบราว์เซอร์
-node scripts/audit.js               # ลิงก์ · anchor · console error · overflow · widget
-npm run test:templates              # เทมเพลตภาษีไทย + สต็อก (127 เคส)
+---
+
+## 💎 ทำอะไรได้บ้าง — 5 ระบบครบถ้วน
+
+| ระบบ | ทำอะไร | ลิงก์ LIVE |
+|---|---|---|
+| 🛒 **Offline POS** | แคตตาล็อก ตะกร้า ตัดสต็อกจริง · ใบเสร็จ**เซ็นด้วยกุญแจ Ed25519 ในเครื่อง** · เน็ตหายก็ขายต่อ สลิปซิงก์เองเมื่อกลับมาออนไลน์ | [เปิดหน้าร้าน](https://krisakornutama.github.io/sovereign-offgrid/sovereignty/public/shop.html) |
+| 💬 **LAN Messenger** | แชทระหว่างเครื่องบนสัญญาณ LAN เดียวกัน (UDP broadcast + REST ผ่าน mesh node พอร์ต 4200) — ไม่ใช้เน็ต | [เปิดห้องแชท](https://krisakornutama.github.io/sovereign-offgrid/sovereignty/public/lan-messenger.html) |
+| 📡 **NFC Check-in** | แตะแท็ก NFC ผ่านมือถือ (Android Chrome) บันทึกงานฟาร์ม/งานแปลงปลูก ลง IndexedDB ในเครื่อง | [เปิด NFC](https://krisakornutama.github.io/sovereign-offgrid/sovereignty/public/nfc-checkin.html) |
+| 📶 **BLE Sensors** | เชื่อมเซนเซอร์ Bluetooth (Xiaomi LYWSD03MMC, ESP32+BME280) อ่านอุณหภูมิ/ความชื้น/แบตเตอรี่ ลง IndexedDB | [เปิดเซนเซอร์](https://krisakornutama.github.io/sovereign-offgrid/sovereignty/public/ble-sensors.html) |
+| 📱 **PWA Offline** | Service Worker พรีแคชทุกหน้า + manifest ติดตั้งเป็นแอปบนมือถือ — ใช้ครบฟีเจอร์เมื่อเสิร์ฟจากโหนดของคุณ | [เปิดหน้าร้านเพื่อติดตั้ง](https://krisakornutama.github.io/sovereign-offgrid/sovereignty/public/shop.html) |
+
+> 💡 **ลองใน 30 วินาที:** เปิด POS → กด `+1` หยิบสินค้า 2–3 ชิ้น → ใส่ชื่อลูกค้า → กด **ขายเลย (ตัดสต็อก + สลิป Ed25519)** — ใบเสร็จเกิดในเครื่องคุณทันที ตรวจลายเซ็นย้อนกลับได้ แม้เน็ตหายสลิปจะขึ้น `รอซิงก์` แล้วซิงก์เองเมื่อโหนดกลับมา
+
+> ℹ️ **ข้อจำกัดที่พูดตรง ๆ:** GitHub Pages เป็น static ล้วน — POS ฝั่งเว็บ (แคตตาล็อก/ตะกร้า/เซ็นสลิป) ทำงานครบในเบราว์เซอร์ แต่**แชท LAN และการซิงก์บัญชีต้องรันโหนดเอง** (Docker/Node · ดูด้านล่าง) และ Web NFC รองรับ Android Chrome เท่านั้น (iPhone ยังไม่รองรับ)
+
+---
+
+## 🚀 วิธีเริ่มใช้งาน — เลือกตามความเข้มข้น 3 ระดับ
+
+### 1) เปิดผ่าน GitHub Pages ทันที (ไม่ต้องติดตั้งอะไร)
+
+```
+💰 POS:   https://krisakornutama.github.io/sovereign-offgrid/sovereignty/public/shop.html
+💬 แชท:   https://krisakornutama.github.io/sovereign-offgrid/sovereignty/public/lan-messenger.html
+📡 NFC:   https://krisakornutama.github.io/sovereign-offgrid/sovereignty/public/nfc-checkin.html
+📶 BLE:   https://krisakornutama.github.io/sovereign-offgrid/sovereignty/public/ble-sensors.html
 ```
 
-`npm run audit` คือประตูก่อน deploy — CI จะไม่ปล่อยเว็บถ้าตรวจไม่ผ่าน
+ลิงก์ทั้งหมดผ่าน HTTPS → เปิดจากมือถือ Android ได้เลย (Web NFC / Web Bluetooth บังคับใช้ [Secure Context](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts) — HTTPS นี้คือเงื่อนไขที่ปลดล็อกมัน)
 
-## วิธีขึ้น GitHub Pages (เลือกทางใดทางหนึ่ง)
-
-### ทางที่ 1 — อัปโหลดผ่านหน้าเว็บ GitHub (ง่ายสุด ไม่ต้องใช้ git)
-
-1. สมัคร/ล็อกอิน GitHub แล้วสร้าง repository ใหม่ ตั้งชื่อเช่น `project-sovereign` → **Public**
-2. กด **uploading an existing file** แล้วลากไฟล์จากโฟลเดอร์ `portfolio/` ขึ้นไปให้ครบทุกไฟล์ที่เว็บใช้ — หน้าเว็บ 12 ไฟล์ (`index.html`, `projects.html`, `livestock.html`, `fishery.html`, `farm.html`, `iot.html`, `education.html`, `water.html`, `books.html`, `search.html`, `en.html`, `me.html`) + `nav.css` + `nav.js` (เมนูหมวดฝั่งซ้าย + drawer มือถือ — ทุกหน้าโหลดสองไฟล์นี้) + `sitemap.xml` + `robots.txt` + **`og.png` (การ์ดแชร์เวลาแปะลิงก์ — ทุกหน้ามี meta ชี้ไฟล์นี้)** + **ไฟล์คีย์ IndexNow (`.txt` ชื่อ 32 ตัวอักษรอังกฤษ-ตัวเลข เนื้อหาในไฟล์ = ชื่อไฟล์เอง — ต้องอยู่ root เว็บ ไม่งั้นการยิง IndexNow จะถูกปฏิเสธ)** + `.nojekyll` + `README.md`
-   - ถ้าหาไฟล์ `.nojekyll` ไม่เจอใน Explorer (เป็นไฟล์ที่ขึ้นต้นจุด) ให้ข้ามก่อน — ดูขั้น 4
-3. กด **Commit changes**
-4. ถ้ายังไม่ได้ใส่ `.nojekyll`: ใน repo กด **Add file → Create new file** ตั้งชื่อว่า `.nojekyll` (เนื้อหาว่าง) → Commit
-5. ไปที่ **Settings → Pages** → Source: **Deploy from a branch** → Branch: `main` + `/ (root)` → Save
-6. รอ 1–2 นาที แล้วเปิดลิงก์ที่หน้า Settings→Pages บอก (รูปแบบ `https://<ชื่อผู้ใช้>.github.io/<ชื่อ repo>/`)
-
-### ทางที่ 2 — git (ถ้าคุ้นเคยใช้ command line)
+### 2) รันด้วย Docker Compose (ครบทุกชั้นในเครื่องคุณ)
 
 ```bash
-# ในโฟลเดอร์ portfolio/
-git init
-# og.png + ไฟล์คีย์ IndexNow (.txt 32 ตัวอักษร) ต้องขึ้นไปด้วย ไม่งั้นการ์ดแชร์กับการยิง IndexNow ใช้ไม่ได้
-git add *.html nav.css nav.js sitemap.xml robots.txt og.png .nojekyll README.md
-git commit -m "portfolio: Project Sovereign showcase — self-hosted commerce OS with Thai tax engine + AI kids education"
-git branch -M main
-# สร้าง repo เปล่าบน GitHub ก่อน (ชื่อ project-sovereign) แล้วแก้ชื่อผู้ใช้ด้านล่าง:
-git remote add origin https://github.com/<ชื่อผู้ใช้>/project-sovereign.git
-git push -u origin main
+git clone https://github.com/krisakornutama/sovereign-offgrid.git
+cd sovereign-offgrid
+docker compose up -d
+# ✅ POS:      http://localhost:4200/shop
+# ✅ แชท LAN:  http://localhost:4200/
+# ✅ NFC:      http://localhost:4200/nfc
+# ✅ BLE:      http://localhost:4200/ble
 ```
 
-แล้วเปิด **Settings → Pages → Deploy from a branch → main / (root)** เหมือนทางที่ 1
-
-## อัปเดตหน้าเว็บภายหลัง
-
-แก้ไฟล์ใน `portfolio/` แล้ว commit+push ขึ้น `main` — workflow **"Deploy portfolio"** จะ sync → push ไป mirror repo → รอ Pages deploy เสร็จ → ยิง IndexNow ให้เองทั้งหมด (ทำงานเมื่อไฟล์ใน `portfolio/**` เปลี่ยนบน main เท่านั้น; audit ต้องผ่านก่อนทุกครั้ง)
-
-> ครั้งแรกที่ใช้: เพิ่ม secret `PAGES_TOKEN` (repo `sovereign-origin` → Settings → Secrets and variables → Actions) — token แบบ fine-grained ที่มีสิทธิ์ read/write contents ของ repo `project-sovereign` หนึ่งเดียว
-
-หรือจะรัน publish จากเครื่องตัวเองก็ได้ (sync → commit → push → ยิง IndexNow — คำสั่งเดียวจบ):
+### 3) รันโหนดเปล่าด้วย Node (ไม่ต้องมี Docker)
 
 ```bash
-node tools/publish-portfolio.mjs --watch        # --watch = รอ CI จนจบ · --no-indexnow = ข้ามการยิง IndexNow
+cd sovereignty
+node server.js                              # ✨ ไม่ต้อง npm install — ใช้ Node built-ins เท่านั้น
+
+MESH_PASSPHRASE="รหัสลับของคุณ" node server.js   # เสิร์ฟแบบเข้ารหัสเมื่ออยู่บน LAN จริง
 ```
 
-> ถ้า publish ด้วยมือ (push เอง) ให้ยิง IndexNow เองด้วย `node tools/indexnow-notify.mjs` — เครื่องมือค้นหา (Bing/Yandex/Seznam/Naver) จะได้คิวมา crawl หน้าใหม่ทันทีแทนที่จะรอเป็นเดือน
+> เหมาะกับ **Raspberry Pi Zero W (RAM 512 MB ก็วิ่งสบาย)** · Pi 3/4/5 · Android (Termux) · Mini PC — เครื่องไหนมี Node.js ก็ใช้ได้
 
-## ให้ Google จัดทำดัชนีเว็บ (ทำครั้งเดียว ~10 นาที)
+<div align="center">
+<img src="docs/images/pos-catalog.png" alt="หน้าแคตตาล็อกของ POS — สินค้า ราคา สต็อก ปุ่มบวกลบ" width="420">
+<img src="docs/images/pos-signing.png" alt="ใบเสร็จจริง เซ็น Ed25519 พร้อมสถานะรอซิงก์" width="420">
+</div>
 
-ทำใน Google Search Console ด้วยบัญชี Google ของเจ้าของ — แท็กยืนยันวางรอบนหน้าแรกแล้ว ทำตามคู่มือทีละคลิก: [`docs/google-search-console-guide.md`](../docs/google-search-console-guide.md)
+---
 
-## ตั้งค่าฟอร์มติดต่อให้ส่งเข้าอีเมลจริง (สมัครฟรี 1 ครั้ง ~3 นาที)
+## 🏛️ สถาปัตยกรรม — ทำไมจึงต่างจาก POS ธรรมดา
 
-ฟอร์มใน `projects.html` ทำงานได้ทันทีแม้ไม่ตั้งค่า (กดส่ง = เปิดแอปอีเมลของผู้ใช้) แต่ถ้าอยากให้ส่งเข้าอีเมลคุณตรง ๆ:
+```mermaid
+flowchart LR
+  A["🛒 POS /shop"] --> B[("IndexedDB<br/>catalog · cart · sales · keys")]
+  B --> C["📝 Digital Receipt<br/>เซ็น Ed25519 ในเครื่อง"]
+  C -- "เข้าคิวซิงก์อัตโนมัติ" --> D["🕸 Mesh Node :4200"]
+  D -- "ตรวจ Ed25519 ก่อนรับ" --> E[("💾 Ledger<br/>sovereignty/data/receipts.jsonl")]
+  subgraph OFFLINE ["🛡️ ทุกชั้นนี้ทำงานได้แม้ไม่มีเน็ต"]
+    A
+    B
+    C
+  end
+```
 
-1. สมัครฟรีที่ [formspree.io](https://formspree.io) → สร้าง **New form** → ตั้งชื่อว่า Project Sovereign
-2. คัดลอก **endpoint** ที่ได้ (หน้าตาแบบนี้: `https://formspree.io/f/abcd1234`)
-3. เปิดไฟล์ `projects.html` หาบรรทัด `var FORM_ENDPOINT = '';` แล้วใส่ endpoint ไว้ในเครื่องหมายคำพูด
-4. ใน Formspree → Settings → ใส่อีเมลคุณเป็นปลายทางรับ
-5. อัปโหลดไฟล์ทับขึ้น GitHub — เสร็จ ฟอร์มจะส่งเข้าอีเมลคุณจริง (ฟรี 50 ข้อความ/เดือน พอสำหรับเว็บโชว์)
+**API ของ mesh node:**
 
-## หมายเหตุ
+```
+GET  /health      → สถานะโหนด · peers · messages · receipts
+GET  /peers       → เครื่องเพื่อนบ้านที่ค้นเจอบน LAN
+POST /send        → ส่งข้อความลงกลุ่มแชท
+GET  /receipts    → อ่านบัญชีการขายทั้งหมดที่ซิงก์เข้ามา
+POST /receipts    → รับสลิปจาก POS — ตรวจ Ed25519 ก่อนบันทึก
+```
 
-- ทุกหน้าเป็น static HTML ไฟล์เดียวจบในตัวเอง: CSS/JS ฝังในไฟล์นั้น ๆ อยู่แล้ว (ไม่มี build step ไม่มี dependency), ฟอนต์โหลดจาก Google Fonts CDN (ถ้าออฟไลน์จะ fallback เป็น system font — หน้ายังใช้ได้)
-- ไม่มีข้อมูลจริงในหน้า — ตัวเลขบนหน้าเป็นข้อมูลสาธิต
-- `.nojekyll` ทำให้ GitHub Pages เสิร์ฟไฟล์ตรง ๆ ไม่ผ่าน Jekyll (จำเป็นเฉพาะเมื่ออัปโหลดเป็น repo แยก)
-- ถ้า push repo นี้เป็นโฟลเดอร์ย่อยของ repo ใหญ่ ให้ตั้ง Pages source เป็น branch `main` + โฟลเดอร์ `/portfolio`
+**สิ่งที่ต่างจาก POS ทั่วไป:**
+
+- ✓ **กุญแจ Ed25519 กำเนิดในเบราว์เซอร์ของคุณ** — กุญแจส่วนตัวไม่เคยออกจาก `IndexedDB` และกุญแจสาธารณะถูกฝังในใบเสร็จ ใครถือสลิปก็ตรวจความจริงด้วยตัวเองได้
+- ✓ **โหนดไม่เชื่อฝั่ง client** — สลิปที่ยื่นเข้ามาถูกตรวจลายเซ็นอีกครั้งฝั่ง Node ก่อนลงบัญชีเสมอ
+- ✓ **Idempotent (ส่งซ้ำได้)** — ระบบ dedupe ตาม `id` ของใบเสร็จ เน็ตหลุดกลางทางแล้วส่งซ้ำก็ไม่เกิดใบสองใบ
+- ✓ **ตัดสต็อกแบบ atomic** — สต็อกไม่พอ ระบบยกเลิกทั้งรายการ ไม่มีการบันทึกครึ่ง ๆ กลาง ๆ
+
+<div align="center">
+<img src="docs/images/pos-offline.png" alt="โหมดออฟไลน์ — ป้ายแจ้งขายได้ต่อ สลิปอยู่ในคิวเครื่องนี้" width="640">
+<br><sub><b>โหมดออฟไลน์ (แคปตจากระบบจริง)</b> — ป้ายเตือน "ออฟไลน์ · ขายได้ต่อ — สลิปอยู่ในคิวเครื่องนี้" ขึ้นมาทันทีที่ปิดเน็ต และใบเสร็จใหม่ยังถูกเซ็น Ed25519 ตามปกติ</sub>
+</div>
+
+> 🧪 **ทดสอบจริงตอนสร้างระบบ:** ขาย 210฿ → ใบเสร็จเซ็น Ed25519 สำเร็จ → ตรวจลายเซ็นย้อนกลับผ่าน ✓ → ซิงก์เข้าบัญชีโหนด (มี 2 ใบใน ledger)
+
+---
+
+## 🏢 อยู่ตรงไหนในผังระบบ Sovereign — ความสัมพันธ์กับ `sovereign-origin`
+
+`sovereign-offgrid` คือ**แขนออฟไลน์**ของจักรวาล Sovereign — ออกแบบให้ทำงานได้เด็ดขาดด้วยตัวเอง โดยไม่ต้องพึ่งระบบหลักเลย แต่ส่งข้อมูลขึ้นมาให้ระบบหลักใช้ต่อได้
+
+```
+                  ╔══════════════════════════════════╗
+                  ║      Sovereign Product Line      ║
+                  ╚══════════════════════════════════╝
+
+  ┌──────────────────────────┐   ┌─────────────────────────────────┐
+  │ 🏠 sovereign-origin      │   │ 🌿 sovereign-offgrid  (repo นี้) │
+  │  (Main OS · public)      │   │  OFF-GRID EDGE APPLIANCE OS     │
+  │                          │   │                                 │
+  │  Desktop app + backend   │◄──┼──  LAN Mesh + Offline POS       │
+  │  ขาย · สต็อก · บัญชี ·   │◄──┼──  NFC/BLE + PWA + Ledger       │
+  │  ภาษีไทย · ฟาร์ม IoT     │   │  Node.js ล้วน + Docker          │
+  │  Next.js + Fastify       │   │  ฟาร์ม/ไร่/ร้านที่ไม่มีเน็ต      │
+  └────────────┬─────────────┘   └─────────────────────────────────┘
+               │                              │
+               └──────   Project Sovereign   ─┴──────
+                         (กฤษกรณ์ อุตมะ)
+                         [project-sovereign] — เว็บสาธารณะ + โครงการหลัก
+```
+
+| โปรเจกต์ | บทบาท |
+|---|---|
+| 🏠 [`sovereign-origin`](https://github.com/krisakornutama/sovereign-origin) | **ระบบหลัก** — Self-Sovereign Home OS แอป desktop ใช้งานจริง (ขาย สต็อก บัญชี ภาษีไทย ฟาร์ม IoT) |
+| 🌿 [`sovereign-offgrid`](https://github.com/krisakornutama/sovereign-offgrid) | **🎉 repo นี้** — เครื่องมือออฟไลน์ระดับพื้นที่ทุรกันดาร ทำงานได้แม้ไม่มี LAN / เน็ต |
+| 📡 [`project-sovereign`](https://github.com/krisakornutama/project-sovereign) | เว็บสาธารณะ + โครงการหลังบ้านแบบ self-hosted (เว็บโชว์ + scraper + เว็บผลงาน) |
+| 🧠 [`sovereign-rule-engine`](https://github.com/krisakornutama/sovereign-rule-engine) | Rule engine แบบ Peer-to-Peer (Merkle-DAG + CRDT + E2EE) — ใช้อัตโนมัติกรรมร่วมกัน |
+
+**การไหลของข้อมูล `sovereign-offgrid` → `sovereign-origin`:**
+
+- POS ออฟไลน์บน Pi/เครื่องหน้าร้าน บันทึกการขายเป็น **Ed25519 signed receipt** — ข้อมูลชุดนี้อ่านได้ทันทีจาก `GET /receipts` และนำเข้า `sovereign-origin` เป็นข้อมูลบัญชีหลักได้
+- ในอนาคต โหนดนี้ทำหน้าที่ **Witness / Archive Node** — ปลายทางตั้งต้นของบัญชีที่จะ push ขึ้น PostgreSQL ของแอป desktop เป็นเอกสารการขาย/บัญชีฉบับจริง
+
+---
+
+## 🔐 ความปลอดภัยตามหลัก Sovereign Design
+
+| หลักการ | การทำงานจริง |
+|---|---|
+| 🧾 **ออฟไลน์ก่อน** | ขาย / แชท / แตะ NFC / อ่าน BLE ได้โดยไม่ต้องมีเน็ตแม้แต่วินาทีเดียว |
+| 🔏 **ข้อมูลอยู่ในเครื่อง** | กุญแจ Ed25519 กำเนิดในเบราว์เซอร์และไม่เคยออกจาก IndexedDB ของเครื่อง |
+| ✂️ **Zero Trust** | โหนดตรวจลายเซ็นก่อนรับสลิป — ข้อมูลปลอมถูกปฏิเสธ `400` ทุกครั้ง (ทดสอบแล้ว) |
+| 📥 **Idempotent** | dedupe ตาม `id` ใบเสร็จ — ส่งซ้ำบัญชีไม่เกิดรายการซ้ำ |
+| 🔐 **E2EE เลือกได้** | ตั้ง `MESH_PASSPHRASE` → เข้ารหัสข้อความ/เพย์โหลดทุกชิ้นด้วย AES-256-GCM |
+| 🐳 **คอนเทนเนอร์ปลอดภัย** | Docker รัน non-root + read-only filesystem ตามคู่มือ [`DOCKER.md`](DOCKER.md) |
+
+---
+
+## 📖 เอกสารฉบับเต็ม
+
+- [`sovereignty/README-MESH.md`](sovereignty/README-MESH.md) — สถาปัตยกรรม LAN mesh + Offline POS แบบละเอียด (พร้อมผลทดสอบจริงทุกข้อ)
+- [`DOCKER.md`](DOCKER.md) — คู่มือ deploy แบบ Docker (Dockerfile non-root + read-only)
+- [`WORK-STATUS.md`](WORK-STATUS.md) — สถานะงานฉบับวิศวกร จะหยิบทำต่อได้ทันที
+- [`FULL-QUALITY.md`](FULL-QUALITY.md) — รายงานการตรวจคุณภาพของรอบสร้างนี้
+- 📗 [`docs/images/pos-demo.gif`](docs/images/pos-demo.gif) — GIF สาธิตขายจริง + [`pos-signing.png`](docs/images/pos-signing.png) ใบเสร็จ Ed25519 + [`pos-offline.png`](docs/images/pos-offline.png) โหมดออฟไลน์
+- [`docs/README-PORTFOLIO.md`](docs/README-PORTFOLIO.md) — เอกสารเดิมของเว็บโชว์ผลงาน static ที่รวมอยู่ในโครง root ของ repo นี้
+
+> 🗒 root ของ repo นี้ยังเสิร์ฟ**เว็บโชว์ผลงาน static** (`index.html`, `projects.html`, `farm.html`, …) คู่กันได้ — ส่วน OS ออฟไลน์ทั้งหมดอยู่ในโฟลเดอร์ [`sovereignty/`](sovereignty/)
+
+---
+
+## 👤 ผู้พัฒนา
+
+**กฤษกรณ์ อุตมะ (Krisakorn Utama)** — System Architect
+> ออกแบบและปล่อยระบบ Electron / Next.js + Node.js เองทั้งชุด — ข้อมูลทุกชุดรออยู่ในเครื่องของคุณเอง ตามหลัก sovereignty
+> แผนการพัฒนาทั้งหมดดูได้ที่ [project-sovereign](https://github.com/krisakornutama/project-sovereign)
+
+---
+
+<div align="center">
+
+**⭐ ถ้าระบบนี้ช่วยงานคุณได้ กด Star เป็นกำลังใจให้การพัฒนาด้วย 🫶**
+
+</div>
