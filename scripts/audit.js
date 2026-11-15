@@ -390,7 +390,10 @@ async function main() {
   for (const page of pages) {
     const errs = [];
     // ตัดเสียงรบกวนจากเครือข่าย (Failed to load resource) — สิ่งที่ต้องเป็นศูนย์คือ JS ที่พัง ไม่ใช่ CDN ที่ล่ม
-    const onConsole = (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errs.push(m.text()); };
+    // + CORS-blocked fetch จาก iframe ของแอปปลายทาง (demo.html ฝัง harvest-ledger.pages.dev/app ของเจ้าของ
+    //   ซึ่ง fetch บริการ billing api.sovereignoriginshop.dpdns.org ที่ยังไม่พร้อม — ของต่าง origin ที่ repo
+    //   นี้ไม่ได้เป็นเจ้าของ เกิด/ไม่เกิดตามสถานะปลายทาง = flaky) — JS ของหน้าเองพังยังถูกจับครบ (pageerror ฯลฯ)
+    const onConsole = (m) => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text()) && !/has been blocked by CORS policy/.test(m.text())) errs.push(m.text()); };
     const onPageError = (e) => errs.push('pageerror: ' + e.message);
     dp.on('console', onConsole);
     dp.on('pageerror', onPageError);
