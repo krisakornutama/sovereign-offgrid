@@ -82,9 +82,9 @@ jobs:
           if find _site -type f \( -name '*.astro' -o -name '*.ts' -o -name '*.tsx' -o -name '*.mjs' -o -name '*.jsonl' \) | grep -q .; then
             echo "::error::ซอร์สโค้ด (.astro/.ts/.tsx/.mjs) ติดไปกับเว็บ — หยุด deploy"; exit 1
           fi
-          # .js อนุญาตเฉพาะ nav.js (ของเว็บเก่า) และไฟล์ built ใน _astro/
-          if find _site -type f -name '*.js' ! -name 'nav.js' ! -path '*/_astro/*' | grep -q .; then
-            echo "::error::มี .js นอกเหนือจาก nav.js/_astro — หยุด deploy"; exit 1
+          # .js อนุญาตเฉพาะ nav.js (ของเว็บเก่า) · sw.js (service worker PWA ของ web/ ที่ Layout.astro register /sw.js) และไฟล์ built ใน _astro/
+          if find _site -type f -name '*.js' ! -name 'nav.js' ! -name 'sw.js' ! -path '*/_astro/*' | grep -q .; then
+            echo "::error::มี .js นอกเหนือจาก nav.js/sw.js/_astro — หยุด deploy"; exit 1
           fi
           ls -la _site
 
