@@ -6,7 +6,7 @@
 //   • API ที่ต้องการค่าสด (/health /peers /messages /send + ทุก non-GET) ไม่ cache
 //   • Cache versioning: เปลี่ยน VERSION → ลบแคชชุดเก่าอัตโนมัติตอน activate
 
-const VERSION = 'v3';
+const VERSION = 'v4';
 const CACHE_NAME = 'sovereign-pwa-' + VERSION;
 
 // PAGES จาก server.js คือแหล่งข้อมูลเดียวกัน — อย่าลืมเพิ่มหน้าใหม่ให้ตรงกันทั้งสองที่
@@ -20,6 +20,17 @@ const PRECACHE = [
   '/icon-192.png',
   '/icon-512.png',
   '/icon-512-maskable.png',
+  // vendor โพสต์-ควอนตัม (ML-DSA · Q-09) — ขายออฟไลน์ต้องลงชื่อสองชั้นได้แม้เน็ต/โหนดตาย
+  // รายการตรงกับ VENDOR_FILES ใน server.js
+  '/pq-vendor/@noble/post-quantum/ml-dsa.js',
+  '/pq-vendor/@noble/post-quantum/_crystals.js',
+  '/pq-vendor/@noble/post-quantum/utils.js',
+  '/pq-vendor/@noble/curves/utils.js',
+  '/pq-vendor/@noble/curves/abstract/fft.js',
+  '/pq-vendor/@noble/curves/abstract/modular.js',
+  '/pq-vendor/@noble/hashes/sha3.js',
+  '/pq-vendor/@noble/hashes/_u64.js',
+  '/pq-vendor/@noble/hashes/utils.js',
 ];
 
 // API สดของ mesh node — ห้าม cache เด็ดขาด (ค่าต้องปัจจุบันเสมอ)

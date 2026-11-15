@@ -25,6 +25,9 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import url from 'url';
+// ชั้นโพสต์-ควอนตัมของใบเสร็จ (Q-09) — vendor แฟ้มเดียวกับที่เสิร์ฟให้หน้าร้าน (public/pq-vendor)
+// import แบบ relative ทั้งกราฟ จึงใช้ได้ทั้ง node (ไม่ต้องมี node_modules) และเบราว์เซอร์ (ไม่ต้องมี import map)
+import { ml_dsa44 } from './public/pq-vendor/@noble/post-quantum/ml-dsa.js';
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 
@@ -121,6 +124,48 @@ function verifyReceiptEd25519(payloadStr, signature, pubJwk) {
     const sig = Buffer.from(signature, 'base64url');
     return crypto.verify(null, data, pub, sig);
   } catch { return false; }
+}
+
+// ── ซองใบเสร็จโพสต์-ควอนตัม (Q-09) — รูปตามไลบรารี sovereign-pq-identity (src/receipt.js) ──
+// bytes ที่ถูกเซ็น = canonical JSON ของแกน {id, issued_at, payload, alg_profile} (เรียงคีย์ ไม่มีช่องว่าง)
+// Ed25519 = node:crypto (pk_b64 เป็น SPKI DER 44 ไบต์) · ML-DSA-44 = vendor ในเครื่อง + context "sovereign-pq-receipt/v1"
+// หลักเดิม: ตรวจไม่ผ่านชั้นใดชั้นหนึ่ง = ไม่รับลงบัญชี — ขาดตัวใดตัวหนึ่งก็ไม่รับ
+const ALG_PROFILE_PQ = 'sovereign.ed25519+ml_dsa44.v1';
+const PQ_CONTEXT = Buffer.from('sovereign-pq-receipt/v1', 'utf8');
+
+function canonicalJson(value) {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (Array.isArray(value)) return '[' + value.map(canonicalJson).join(',') + ']';
+  const keys = Object.keys(value).sort();
+  return '{' + keys.map((k) => JSON.stringify(k) + ':' + canonicalJson(value[k])).join(',') + '}';
+}
+
+function verifyReceiptEnvelope(e) {
+  const fail = (error) => ({ ok: false, error });
+  try {
+    if (!e || typeof e !== 'object') return fail('envelope malformed');
+    if (e.alg_profile !== ALG_PROFILE_PQ) return fail('alg_profile not supported at this node: ' + String(e.alg_profile || ''));
+    if (!e.id || !e.issued_at || e.payload === undefined) return fail('envelope core missing');
+    const p = e.payload;
+    if (!p || p.type !== 'SVR-RECEIPT' || !p.id || !Number.isFinite(p.total) || !Array.isArray(p.items)) return fail('receipt malformed');
+    if (p.id !== e.id) return fail('receipt id mismatch');
+    const sigs = e.signatures || {};
+    const core = Buffer.from(canonicalJson({ id: e.id, issued_at: e.issued_at, payload: p, alg_profile: e.alg_profile }), 'utf8');
+    // 1) Ed25519 — กุญแจในซอง (SPKI DER) ต้องเป็นตัวเดียวกับที่ฝังใน payload (ผูกกันสองทาง)
+    if (!sigs.ed25519?.pk_b64 || !sigs.ed25519?.sig_b64) return fail('missing ed25519 signature');
+    let pub;
+    try { pub = crypto.createPublicKey({ key: Buffer.from(sigs.ed25519.pk_b64, 'base64'), format: 'der', type: 'spki' }); }
+    catch { return fail('ed25519 public key malformed'); }
+    if (!p.pub || p.pub.kty !== 'OKP' || p.pub.crv !== 'Ed25519') return fail('payload pubkey missing');
+    if (pub.export({ format: 'jwk' }).x !== p.pub.x) return fail('ed25519 pubkey mismatch with payload');
+    if (!crypto.verify(null, core, pub, Buffer.from(sigs.ed25519.sig_b64, 'base64'))) return fail('unverified ed25519 signature');
+    // 2) ML-DSA-44 (FIPS 204) — context ต้องตรงกับตอนเซ็น มิฉะนั้นถือว่าไม่ผ่าน
+    if (!sigs.ml_dsa44?.pk_b64 || !sigs.ml_dsa44?.sig_b64) return fail('missing ml_dsa44 signature');
+    const pk = Buffer.from(sigs.ml_dsa44.pk_b64, 'base64');
+    if (pk.length !== ml_dsa44.lengths.publicKey) return fail('ml_dsa44 pk length ' + pk.length + ' != ' + ml_dsa44.lengths.publicKey);
+    if (ml_dsa44.verify(Buffer.from(sigs.ml_dsa44.sig_b64, 'base64'), core, pk, { context: PQ_CONTEXT }) !== true) return fail('unverified ml_dsa44 signature');
+    return { ok: true };
+  } catch { return fail('envelope verification error'); }
 }
 
 loadReceipts();
@@ -249,6 +294,24 @@ for (const [route, [file, mime]] of STATIC_FILES) {
   STATIC_CACHE.set(route, fs.existsSync(full) ? [fs.readFileSync(full), mime] : null);
 }
 
+// แฟ้ม vendor โพสต์-ควอนตัม (Q-09) — เสิร์ฟให้หน้า /shop import ตรง URL (allowlist ชัดแจ้งตามสไตล์ของไฟล์นี้)
+// เป็นแฟ้มชุดเดียวกับที่ server ใช้ตรวจ ML-DSA ด้านบน — sw.js precache รายการนี้ด้วยเพื่อขายออฟไลน์
+const VENDOR_FILES = [
+  '/pq-vendor/@noble/post-quantum/ml-dsa.js',
+  '/pq-vendor/@noble/post-quantum/_crystals.js',
+  '/pq-vendor/@noble/post-quantum/utils.js',
+  '/pq-vendor/@noble/curves/utils.js',
+  '/pq-vendor/@noble/curves/abstract/fft.js',
+  '/pq-vendor/@noble/curves/abstract/modular.js',
+  '/pq-vendor/@noble/hashes/sha3.js',
+  '/pq-vendor/@noble/hashes/_u64.js',
+  '/pq-vendor/@noble/hashes/utils.js',
+];
+for (const route of VENDOR_FILES) {
+  const full = path.join(PUBLIC_DIR, route.slice(1));
+  STATIC_CACHE.set(route, fs.existsSync(full) ? [fs.readFileSync(full), 'text/javascript; charset=utf-8'] : null);
+}
+
 function json(res, status, body) {
   const data = JSON.stringify(body);
   res.writeHead(status, {
@@ -319,6 +382,32 @@ const server = http.createServer(async (req, res) => {
       const raw = await readBody(req, 16 * 1024);
       let body;
       try { body = JSON.parse(raw.toString('utf8')); } catch { return json(res, 400, { error: 'invalid json' }); }
+
+      // ซองโพสต์-ควอนตัม (Q-09): {id, issued_at, payload, alg_profile, signatures{ed25519, ml_dsa44}}
+      // ตรวจครบทุกชั้นของโปรไฟล์ก่อนลงบัญชี — ตัวใดขาดหรือไม่ผ่าน = ปฏิเสธทั้งใบ
+      if (body?.envelope) {
+        const env = body.envelope;
+        const v = verifyReceiptEnvelope(env);
+        if (!v.ok) return json(res, 400, { error: v.error });
+        const id = String(env.id).slice(0, 64);
+        if (receipts.has(id)) return json(res, 200, { ok: true, id, duplicate: true });
+        const entry = {
+          receivedAt: Date.now(), id,
+          payload: typeof body.payload === 'string' ? body.payload.slice(0, 16384) : JSON.stringify(env.payload).slice(0, 16384),
+          signature: typeof body.signature === 'string' ? body.signature.slice(0, 200) : '',
+          envelope: env, verified: 'ed25519+ml_dsa44',
+          source: req.socket?.remoteAddress || '',
+        };
+        receipts.set(id, entry);
+        if (receipts.size > MAX_RECEIPTS) {
+          const drop = [...receipts.keys()].slice(0, receipts.size - MAX_RECEIPTS);
+          for (const k of drop) receipts.delete(k);
+        }
+        appendReceiptLog(entry);
+        return json(res, 200, { ok: true, id, duplicate: false, verified: 'ed25519+ml_dsa44' });
+      }
+
+      // แนวเดิม (Ed25519 ชั้นเดียว): สลิปเก่าจาก POS รุ่นก่อน/โหนดเพื่อนที่ยังไม่อัปเดต ยังเข้าได้เต็มสิทธิ์
       const payloadStr = typeof body?.payload === 'string' ? body.payload : '';
       const signature = typeof body?.signature === 'string' ? body.signature : '';
       let receiptObj = null;

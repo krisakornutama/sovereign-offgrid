@@ -61,8 +61,22 @@ MESH_PEER_NAME="แม่บ้าน" MESH_PASSPHRASE="ฟ้า-สวรร�
 | `GET /peers` | รายชื่อเครื่องบน LAN (อายุไม่เกิน 30s) |
 | `GET /messages?since=N` | ข้อความใหม่ตั้งแต่ seq N (cursor) |
 | `POST /send` | ส่งข้อความทั้งกลุ่ม — `{"text":"..."}` (สูงสุด 2000 ตัวอักษร, body จำกัด 8KB) |
-| `POST /receipts` | รับสลิปขายจาก POS — `{payload, signature}` ตรวจ Ed25519 ก่อนลงบัญชี · dedupe ตาม id (ยื่นซ้ำ = `duplicate:true` เงียบ ๆ) |
-| `GET /receipts?since=` | อ่านบัญชีใบเสร็จทั้งหมด/ใหม่ตั้งแต่ receivedAt N (ตรวจสอบตามตำแหน่งเวลา) |
+| `POST /receipts` | รับสลิปขายจาก POS — รูปเก่า `{payload, signature}` ตรวจ Ed25519 ก่อนลงบัญชี · **รูปใหม่ (Q-09) `{payload, signature, envelope}`** ตรวจสองชั้น Ed25519 + ML-DSA-44 (FIPS 204 · canonical core + context `sovereign-pq-receipt/v1`) ครบทั้งชั้นจึงลงบัญชี · dedupe ตาม id (ยื่นซ้ำ = `duplicate:true` เงียบ ๆ) |
+| `GET /receipts?since=` | อ่านบัญชีใบเสร็จทั้งหมด/ใหม่ตั้งแต่ receivedAt N (ตรวจสอบตามตำแหน่งเวลา) — ใบสองชั้นมีแฟ้ม `envelope` ฝังมาด้วย ตรวจใหม่ได้ทุกเครื่อง |
+
+### สลิปสองชั้นตั้งแต่ที่ขาย (Q-09 · 2026-11-15)
+
+หน้าร้าน (`/shop`) ลงชื่อสลิปใหม่เป็น **สองรูปคู่กัน** จากกุญแจเดิมของอุปกรณ์:
+
+1. **รูปเดิม** `{payload, signature}` — Ed25519 บน payload string (โหนดเก่า/ผู้อ่านเดิมยังใช้ได้เต็มสิทธิ์)
+2. **ซองโพสต์-ควอนตัม** `{id, issued_at, payload, alg_profile, signatures{ed25519, ml_dsa44}}` — ตามไลบรารี
+   `sovereign-pq-identity`: bytes ที่ถูกเซ็น = canonical JSON (เรียงคีย์) ของแกนสี่ช่อง · Ed25519 (pk = SPKI DER) +
+   ML-DSA-44 ด้วย context `sovereign-pq-receipt/v1` · `alg_profile = sovereign.ed25519+ml_dsa44.v1`
+
+- กุญแจ ML-DSA เกิดครั้งเดียวในเครื่อง (IndexedDB `keys` id `device-ml`) · แฟ้ม vendor อยู่ในโหนดเอง
+  (`public/pq-vendor/` — server ตรวจด้วยแฟ้มเดียวกับที่เสิร์ฟ, ไม่มี npm dependency ใหม่, SW v4 precache ครบไว้ขายออฟไลน์)
+- ตรวจใบใหม่ที่ไหนก็ได้: หน้าตรวจสาธารณะ `verify.html` (project-sovereign) · `cli.js ledger verify`
+  (sovereign-pq-identity) · โหนดเองตอนรับเข้าบัญชี — ทดสอบจริงแล้วทั้งสามทางผ่าน (15 พ.ย. 2026)
 
 ### ผลทดสอบจริง (เครื่อง Windows, ผ่านแล้วทุกข้อ)
 

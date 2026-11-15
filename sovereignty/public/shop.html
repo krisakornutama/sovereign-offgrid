@@ -153,6 +153,14 @@ footer a:hover{color:var(--green)}
 </footer>
 
 <div id="netBadge" hidden style="position:fixed;left:14px;bottom:14px;z-index:50;font-family:var(--mono);font-size:.6rem;letter-spacing:.08em;padding:7px 12px;border-radius:999px;border:1px solid rgba(251,191,36,.4);color:#fbbf24;background:rgba(3,7,18,.85);backdrop-filter:blur(4px)">ออฟไลน์ · ขายได้ต่อ — สลิปอยู่ในคิวเครื่องนี้</div>
+<script type="module">
+// ชั้นโพสต์-ควอนตัมของสลิป (ML-DSA-44 · FIPS 204) — vendor อยู่ในโหนดเอง (/pq-vendor ไฟล์เดียวกับที่โหนดใช้ตรวจ)
+// โหลดไม่ได้ (เบราว์เซอร์เก่า/แคชเก่า) = ขายได้ตามปกติ สลิปลงชื่อ Ed25519 ชั้นเดียวแบบเดิม — ไม่บล็อกการขาย
+try {
+  const { ml_dsa44 } = await import('/pq-vendor/@noble/post-quantum/ml-dsa.js');
+  window.PQML = ml_dsa44;
+} catch (e) { console.warn('ML-DSA โหลดไม่ได้ — สลิปใหม่จะเป็น Ed25519 ชั้นเดียว:', e && e.message); }
+</script>
 <script>
 (function(){
   'use strict';
@@ -167,6 +175,8 @@ footer a:hover{color:var(--green)}
   function fmtTime(ts){ const d = new Date(ts), p = (n) => ('0' + n).slice(-2); return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); }
   const randB64u = (n) => { const a = new Uint8Array(n); crypto.getRandomValues(a); return btoa(String.fromCharCode(...a)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); };
   const bufToB64u = (ab) => btoa(String.fromCharCode(...new Uint8Array(ab))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  const bufToB64 = (ab) => btoa(String.fromCharCode(...new Uint8Array(ab)));
+  const b64ToBytes = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 
   // ── IndexedDB (sovereign-pos: catalog + cart + sales + keys) ────────────────
   const DB_NAME = 'sovereign-pos', VERSION = 1;
@@ -216,13 +226,40 @@ footer a:hover{color:var(--green)}
     }
   }
 
+  // ── กุญแจ ML-DSA-44 ของอุปกรณ์ (เกิดครั้งเดียว เก็บในเครื่องเท่านั้น — IndexedDB keys) ──
+  let mlKeys = null;
+  async function ensureMlKey(){
+    if (mlKeys || !window.PQML) return mlKeys;
+    const rows = await getAll('keys');
+    const rec = rows.find(r => r.id === 'device-ml');
+    if (rec && rec.sk_b64 && rec.pk_b64) {
+      mlKeys = { sk: b64ToBytes(rec.sk_b64), pk: b64ToBytes(rec.pk_b64), pkB64: rec.pk_b64 };
+      return mlKeys;
+    }
+    const kp = window.PQML.keygen(crypto.getRandomValues(new Uint8Array(32)));
+    const pkB64 = bufToB64(kp.publicKey);
+    await idbPut('keys', { id: 'device-ml', sk_b64: bufToB64(kp.secretKey), pk_b64: pkB64, createdAt: Date.now() });
+    mlKeys = { sk: kp.secretKey, pk: kp.publicKey, pkB64 };
+    return mlKeys;
+  }
+  // pk ของ Ed25519 ในซอง = SPKI DER 44 ไบต์ (รูปเดียวกับ readEdPub ฝั่ง node:crypto และหน้าตรวจ verify.html)
+  let edSpkiCache = null;
+  async function edSpkiB64Of(){
+    if (edSpkiCache) return edSpkiCache;
+    const k = await crypto.subtle.importKey('jwk', pubJwk, { name: 'Ed25519' }, true, ['verify']);
+    edSpkiCache = bufToB64(await crypto.subtle.exportKey('spki', k));
+    return edSpkiCache;
+  }
+
   // ── สลิป: canonical payload (JSON key-order ตายตัว) + Ed25519 + ตรวจกลับทันที ──
   function receiptPayload(sale, pub){
-    return JSON.stringify({
+    // คืน "object" — string รูปเดิม (key-order ตายตัวตามลิเทอรัลนี้) ยังทำจาก object นี้ใน checkout
+    // total_thb = ยอดมาตรฐานของระบบบัญชี (หน้าตรวจ/ledger ใช้ — total คงไว้ให้โหนดรุ่นเก่า)
+    return {
       v: 1, type: 'SVR-RECEIPT', id: sale.id, ts: sale.ts, currency: 'THB',
       items: sale.items.map(it => ({ id: it.id, name: it.name, unit: it.unit, qty: it.qty, price: it.price })),
-      total: sale.total, customer: sale.customer || null, pub
-    });
+      total: sale.total, total_thb: sale.total, customer: sale.customer || null, pub
+    };
   }
   async function signPayload(payloadStr){
     if (!keyReady) return '';
@@ -236,6 +273,50 @@ footer a:hover{color:var(--green)}
       const key = await crypto.subtle.importKey('jwk', pub || JSON.parse(payloadStr).pub, { name: 'Ed25519' }, false, ['verify']);
       return await crypto.subtle.verify({ name: 'Ed25519' }, key, sig, enc.encode(payloadStr));
     } catch { return false; }
+  }
+
+  // ── ซองโพสต์-ควอนตัมตามไลบรารี sovereign-pq-identity (Q-09 — ตรวจที่ verify.html / โหนด / cli.js ได้ทันที) ──
+  // bytes ที่ถูกเซ็น = canonical JSON ของแกน {id, issued_at, payload, alg_profile} (เรียงคีย์ ไม่มีช่องว่าง)
+  // Ed25519 เซ็นแกนเดียวกัน (WebCrypto) · ML-DSA-44 เซ็นแกนเดียวกัน + context "sovereign-pq-receipt/v1"
+  const ALG_PROFILE = 'sovereign.ed25519+ml_dsa44.v1';
+  const PQ_CONTEXT = enc.encode('sovereign-pq-receipt/v1');
+  function canonical(value){
+    if (value === null || typeof value !== 'object') return JSON.stringify(value);
+    if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
+    const keys = Object.keys(value).sort();
+    return '{' + keys.map((k) => JSON.stringify(k) + ':' + canonical(value[k])).join(',') + '}';
+  }
+  function pqCoreBytes(e){ return enc.encode(canonical({ id: e.id, issued_at: e.issued_at, payload: e.payload, alg_profile: e.alg_profile })); }
+  async function buildPqEnvelope(sale, payloadObj){
+    try {
+      const [spki, ml] = await Promise.all([edSpkiB64Of(), ensureMlKey()]);
+      if (!spki || !ml) return null;
+      const envelope = { id: sale.id, issued_at: new Date(sale.ts).toISOString(), payload: payloadObj, alg_profile: ALG_PROFILE };
+      const bytes = pqCoreBytes(envelope);
+      const edSig = await crypto.subtle.sign({ name: 'Ed25519' }, privKey, bytes);
+      const mlSig = window.PQML.sign(bytes, ml.sk, { context: PQ_CONTEXT });
+      envelope.signatures = {
+        ed25519: { pk_b64: spki, sig_b64: bufToB64(edSig) },
+        ml_dsa44: { pk_b64: ml.pkB64, sig_b64: bufToB64(mlSig) },
+      };
+      return envelope;
+    } catch (e) { console.warn('ซองโพสต์-ควอนตัมสร้างไม่ได้ — สลิปนี้เป็น Ed25519 ชั้นเดียว:', e && e.message); return null; }
+  }
+  async function verifyPqEnvelope(e){
+    const out = { valid: false, ed25519: false, ml_dsa44: false };
+    try {
+      if (!e || !e.id || !e.issued_at || e.payload === undefined || e.alg_profile !== ALG_PROFILE) return out;
+      const bytes = pqCoreBytes(e);
+      const sigs = e.signatures || {};
+      if (!sigs.ed25519?.pk_b64 || !sigs.ed25519?.sig_b64 || !sigs.ml_dsa44?.pk_b64 || !sigs.ml_dsa44?.sig_b64) return out;
+      const key = await crypto.subtle.importKey('spki', b64ToBytes(sigs.ed25519.pk_b64), { name: 'Ed25519' }, false, ['verify']);
+      out.ed25519 = await crypto.subtle.verify({ name: 'Ed25519' }, key, b64ToBytes(sigs.ed25519.sig_b64), bytes);
+      const pk = b64ToBytes(sigs.ml_dsa44.pk_b64);
+      out.ml_dsa44 = Boolean(window.PQML) && pk.length === window.PQML.lengths.publicKey
+        && window.PQML.verify(b64ToBytes(sigs.ml_dsa44.sig_b64), bytes, pk, { context: PQ_CONTEXT }) === true;
+      out.valid = out.ed25519 === true && out.ml_dsa44 === true;
+    } catch (e2) { void e2; }
+    return out;
   }
 
   // ── Seed สินค้าเริ่มต้น (ครั้งแรกเท่านั้น — ของจริงใช้ปุ่มแก้ไขต่อได้) ─────────
@@ -371,6 +452,7 @@ footer a:hover{color:var(--green)}
   // ── บัญชีขาย render + คิวซิงก์ ─────────────────────────────────────────────────
   function sigChip(sale){
     if (sale.receipt && sale.receipt.localVerify === 'fail') return '<span class="tag sigbad">✗ ตรวจล้มเหลว</span>';
+    if (sale.receipt && sale.receipt.envelope && sale.receipt.localVerify === 'ok') return '<span class="tag sig">✓ Ed25519+ML-DSA · ' + esc(sale.receipt.envelope.signatures.ed25519.sig_b64.slice(0, 6)) + '…</span>';
     if (sale.receipt && sale.receipt.signature) return '<span class="tag sig">✓ Ed25519 · ' + esc(sale.receipt.signature.slice(0, 6)) + '…</span>';
     return '<span class="tag sigbad">ไม่ลงชื่อ</span>';
   }
@@ -405,19 +487,33 @@ footer a:hover{color:var(--green)}
     const out = await checkoutSales(customer);
     if (!out.ok) { setStatus('no', out.reason); await renderCart(); return; }
     const sale = out.sale;
-    // สลิปลงชื่อ + ตรวจกลับทันที (อย่าให้กระดูกออกจากเครื่อง)
-    let payload = null, signature = '', signOk = false;
+    // สลิปสองชั้นตั้งแต่ที่ขาย (Q-09): รูปเดิม {payload, signature} + ซองโพสต์-ควอนตัมตามไลบรารี
+    //   รูปเดิม = โหนดเก่า/ผู้อ่านเดิมยังตรวจได้เต็มสิทธิ์ · ซอง = verify.html กับโหนดใหม่ตรวจ Ed25519+ML-DSA ได้ทันที
+    let payload = null, signature = '', envelope = null, signOk = false;
     try {
-      payload = receiptPayload(sale, pubJwk);
+      const payloadObj = receiptPayload(sale, pubJwk);
+      payload = JSON.stringify(payloadObj);
       signature = await signPayload(payload);
       signOk = keyReady && !!signature;
+      envelope = await buildPqEnvelope(sale, payloadObj);
     } catch (e) { void e; }
-    const rec = { ...sale, receipt: { payload, signature: signOk ? signature : null, localVerify: signOk ? 'ok' : 'none' }, sync: { state: 'queued', attempts: 0, lastTry: 0, reason: '' } };
+    // ตรวจกลับทันทีทุกชั้นที่มี (อย่าให้กระดูกออกจากเครื่อง)
+    let localVerify = 'none';
+    try {
+      if (signOk) {
+        const okOld = await b64uVerify(payload, signature, null);
+        const okPq = envelope ? (await verifyPqEnvelope(envelope)).valid : true;
+        localVerify = okOld && okPq ? (envelope ? 'ok' : 'ok-ed') : 'fail';
+      }
+    } catch (e) { void e; }
+    const rec = { ...sale, receipt: { payload, signature: signOk ? signature : null, envelope: envelope || null, localVerify }, sync: { state: 'queued', attempts: 0, lastTry: 0, reason: '' } };
     await idbPut('sales', rec);
     $('cartBody').innerHTML = '';
     $('customer').value = '';
     await renderCart();
-    await renderSales(signOk ? 'ขายสำเร็จ — สลิป ' + sale.id + ' ลงชื่อ Ed25519 ✓ (รอซิงก์เข้าโหนด)' : 'ขายสำเร็จ — ยังไม่มีลายเซ็น');
+    await renderSales(signOk
+      ? 'ขายสำเร็จ — สลิป ' + sale.id + ' ลงชื่อ' + (envelope ? ' Ed25519+ML-DSA (สองชั้น)' : ' Ed25519') + ' ✓ (รอซิงก์เข้าโหนด)'
+      : 'ขายสำเร็จ — ยังไม่มีลายเซ็น');
     // ขายเสร็จลองส่งเข้าโหนดเลย (ถ้าออนไลน์) — ไม่บล็อก UI
     setTimeout(() => { flushSilent(); }, 1000);
   }
@@ -445,7 +541,7 @@ footer a:hover{color:var(--green)}
       let done = false, denied = false, lastErr = '';
       for (const base of targets) {
         try {
-          const r = await fetch(base + '/receipts', { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload: sale.receipt.payload, signature: sale.receipt.signature }) });
+          const r = await fetch(base + '/receipts', { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ payload: sale.receipt.payload, signature: sale.receipt.signature, envelope: sale.receipt.envelope || undefined }) });
           if (r.ok) { done = true; break; }
           const j = await r.json().catch(() => ({}));
           lastErr = (j && j.error) || ('HTTP ' + r.status);
@@ -515,15 +611,22 @@ footer a:hover{color:var(--green)}
   $('verifyAllBtn').addEventListener('click', async () => {
     if (!keyReady) { setStatus('no', 'ยังไม่มีกุญแจจาก Import/เขียน — เปิดด้วยเบราว์เซอร์ที่รองรับ Ed25519'); return; }
     const list = await getAll('sales');
-    let good = 0;
+    let good = 0, pq = 0;
     for (const s of list) {
-      if (!s.receipt || !s.receipt.payload || !s.receipt.signature) continue;
-      const ok = await b64uVerify(s.receipt.payload, s.receipt.signature, null);
-      s.receipt.localVerify = ok ? 'ok' : 'fail';
-      if (ok) good++;
+      let ok = false, twoLayer = false;
+      if (s.receipt && s.receipt.envelope) {
+        // ซองสองชั้น: Ed25519 ตรวจเสมอ · ML-DSA ตรวจเมื่อ vendor โหลดได้ (เครื่องที่ไม่รองรับไม่นับว่าใบพัง)
+        const v = await verifyPqEnvelope(s.receipt.envelope);
+        ok = v.ed25519 === true && (!window.PQML || v.ml_dsa44 === true);
+        twoLayer = ok && Boolean(window.PQML) && v.ml_dsa44 === true;
+      } else if (s.receipt && s.receipt.payload && s.receipt.signature) {
+        ok = await b64uVerify(s.receipt.payload, s.receipt.signature, null);
+      } else continue;
+      s.receipt.localVerify = ok ? (twoLayer ? 'ok' : 'ok-ed') : 'fail';
+      if (ok) { good++; if (twoLayer) pq++; }
       await idbPut('sales', s);
     }
-    await renderSales('ตรวจลายเซ็น: ผ่าน ' + good + ' / ' + list.length + ' ใบ (ตรวจในเครื่อง — พิสูจน์ได้แม้ออฟไลน์)');
+    await renderSales('ตรวจลายเซ็น: ผ่าน ' + good + ' / ' + list.length + ' ใบ' + (pq ? ' (สองชั้น Ed25519+ML-DSA ' + pq + ' ใบ)' : '') + ' — ตรวจในเครื่อง พิสูจน์ได้แม้ออฟไลน์');
   });
   $('exportBtn').addEventListener('click', async () => {
     const list = (await getAll('sales')).sort((a, b) => b.ts - a.ts);
