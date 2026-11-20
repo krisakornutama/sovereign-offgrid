@@ -164,13 +164,13 @@ footer a:hover{color:var(--green)}
 // ชั้นโพสต์-ควอนตัมของสลิป (ML-DSA-44 · FIPS 204) — vendor อยู่ในโหนดเอง (/pq-vendor ไฟล์เดียวกับที่โหนดใช้ตรวจ)
 // โหลดไม่ได้ (เบราว์เซอร์เก่า/แคชเก่า) = ขายได้ตามปกติ สลิปลงชื่อ Ed25519 ชั้นเดียวแบบเดิม — ไม่บล็อกการขาย
 try {
-  const { ml_dsa44 } = await import('/pq-vendor/@noble/post-quantum/ml-dsa.js');
+  const { ml_dsa44 } = await import('./pq-vendor/@noble/post-quantum/ml-dsa.js');
   window.PQML = ml_dsa44;
   window.dispatchEvent(new Event('pq-ml-ready'));
 } catch (e) { console.warn('ML-DSA โหลดไม่ได้ — สลิปใหม่จะเป็น Ed25519 ชั้นเดียว:', e && e.message); }
 // ชั้นที่สามแบบเร็ว (SLH-DSA-128f · FIPS 205) — เปิดเฉพาะเมื่อผู้ขายเลือก (ช้ากว่า ~6–7 วิ/ใบ แลกใบใหญ่ขึ้นเป็น ~28.6 KB)
 try {
-  const { slh_dsa_shake_128f } = await import('/pq-vendor/@noble/post-quantum/slh-dsa.js');
+  const { slh_dsa_shake_128f } = await import('./pq-vendor/@noble/post-quantum/slh-dsa.js');
   window.PQSLH = slh_dsa_shake_128f;
   window.dispatchEvent(new Event('pq-slh-ready'));
 } catch (e) { console.warn('SLH-DSA โหลดไม่ได้ — ตัวเลือกสลิปสามชั้นจะใช้งานไม่ได้:', e && e.message); }
