@@ -23,7 +23,7 @@ Repo: `https://github.com/krisakornutama/project-sovereign.git`
 ## ✅ ข้อ 2 — GitHub Actions CI/CD (สร้างไฟล์แล้ว, push ติด workflow scope)
 
 - `.github/workflows/docker-publish.yml`: build → `ghcr.io/krisakornutama/project-sovereign` (tags: sha, latest, branch)
-- `.github/workflows/pages.yml`: deploy to GitHub Pages (`pages: write`, `id-token: write` permissions)
+- `.github/workflows/pages.yml` — **ลบแล้ว (20 พ.ย. 2026)**: เคย deploy path `.` ทั้งรีโปร ขนานกับ `audit-deploy.yml` → ใครเสร็จทีหลังทับกัน (รอบที่ audit ผ่าน artifact `_site` แคบกว่าทับ เว็บ POS หาย 404) และเสี่ยงปล่อยซอร์ส/เซิร์ฟเวอร์ขึ้นเว็บ · ตอนนี้ `audit-deploy.yml` เป็นผู้ deploy เดียว (หลัง audit ผ่าน + ด่านกันโค้ดหลุด) และคัด `sovereignty/public` ขึ้นเว็บด้วย
 - **Status**: committed (`c1b3098`) but `git push origin feat/docker-homelab` blocked by repo protection (`audit-deploy.yml` requires `workflow` scope token)
 - **Fix**: use PAT with `workflow` scope, then `git push origin feat/docker-homelab` → open Settings → Actions → allow workflows
 

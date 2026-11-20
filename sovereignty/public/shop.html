@@ -6,7 +6,7 @@
 <title>Sovereign POS — หน้าร้านออฟไลน์ ขายได้แม้สัญญาณตาย สลิปลงลายมือชื่อ Ed25519 ในเครื่อง</title>
 <meta name="description" content="POS แบบอธิปไตย: แคตตาล็อก ตะกร้า สต็อก และสลิปลายเซ็น Ed25519 ทั้งหมดอยู่บนเครื่อง (IndexedDB) — ขายออฟไลน์ได้ ซิงก์เข้าบัญชีโหนดเมื่อกลับมาออนไลน์ ไม่พึ่งพา cloud ใด ๆ">
 <meta name="theme-color" content="#030712">
-<link rel="manifest" href="/manifest.json">
+<link rel="manifest" href="./manifest.json">
 <style>
 :root{
   --bg:#030712; --panel:rgba(17,24,39,.65); --line:rgba(52,211,153,.22);
@@ -770,7 +770,9 @@ try {
   })();
 
   // PWA: ลงทะเบียน Service Worker (cache-first — POS เปิดได้แม้เซิร์ฟเวอร์/เน็ตหาย)
-  if ('serviceWorker' in navigator && window.isSecureContext) {
+  // ลงทะเบียนเฉพาะเมื่อเสิร์ฟจากโหนดเอง (/shop) — บน Pages ไฟล์ /sw.js คือ SW ของเว็บโฆษณา
+  // คนละ precache กัน ถ้าไปลงทะเบียนทับจะทำให้แคชของ POS ชนกับของเว็บหลัก
+  if ('serviceWorker' in navigator && window.isSecureContext && location.pathname === '/shop') {
     navigator.serviceWorker.register('/sw.js').catch(function () {});
   }
 })();

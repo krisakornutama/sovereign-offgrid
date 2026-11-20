@@ -69,6 +69,12 @@ jobs:
           # 2) เว็บใหม่จาก Astro — ทับเฉพาะ path ที่มีทั้งคู่ (/ และ /projects/) ตัวใหม่ชนะ
           cp -R web/dist/. _site/
 
+          # 3) POS ออฟไลน์ + vendor โพสต์-ควอนตัม — static ล้วน (sovereignty/public เท่านั้น)
+          #    ไม่เอา server.js/README-MESH/Dockerfile/data (แบ็กเอนด์+ข้อมูลจริงต้องไม่ออกเว็บ)
+          #    เหตุผล: README + badge ชี้ "LIVE POS" มาที่ /sovereignty/public/shop.html
+          mkdir -p _site/sovereignty/public
+          cp -R sovereignty/public/. _site/sovereignty/public/
+
           # ─── ด่านป้องกัน: แหล่งโค้ด/ไฟล์ระบบ ห้ามปรากฏบนเว็บสาธารณะ ───
           if [ -e _site/scraper ] || [ -e _site/web ] || [ -e _site/scripts ] || [ -e _site/templates ]; then
             echo "::error::โฟลเดอร์ซอร์สโค้ด (scraper/web/scripts/templates) ติดไปกับเว็บ — หยุด deploy"; exit 1
@@ -82,8 +88,9 @@ jobs:
           if find _site -type f \( -name '*.astro' -o -name '*.ts' -o -name '*.tsx' -o -name '*.mjs' -o -name '*.jsonl' \) | grep -q .; then
             echo "::error::ซอร์สโค้ด (.astro/.ts/.tsx/.mjs) ติดไปกับเว็บ — หยุด deploy"; exit 1
           fi
-          # .js อนุญาตเฉพาะ nav.js (ของเว็บเก่า) · sw.js (service worker PWA ของ web/ ที่ Layout.astro register /sw.js) และไฟล์ built ใน _astro/
-          if find _site -type f -name '*.js' ! -name 'nav.js' ! -name 'sw.js' ! -path '*/_astro/*' | grep -q .; then
+          # .js อนุญาตเฉพาะ nav.js (ของเว็บเก่า) · sw.js (service worker PWA ของ web/ ที่ Layout.astro register /sw.js) · ไฟล์ built ใน _astro/
+          # และ js ของ POS (sovereignty/public/**: หน้า/Service Worker/vendor @noble ที่ต้องรันในเบราว์เซอร์)
+          if find _site -type f -name '*.js' ! -name 'nav.js' ! -name 'sw.js' ! -path '*/_astro/*' ! -path '*/sovereignty/public/*' | grep -q .; then
             echo "::error::มี .js นอกเหนือจาก nav.js/sw.js/_astro — หยุด deploy"; exit 1
           fi
           ls -la _site
