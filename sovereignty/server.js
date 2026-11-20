@@ -28,6 +28,7 @@ import url from 'url';
 // ชั้นโพสต์-ควอนตัมของใบเสร็จ (Q-09) — vendor แฟ้มเดียวกับที่เสิร์ฟให้หน้าร้าน (public/pq-vendor)
 // import แบบ relative ทั้งกราฟ จึงใช้ได้ทั้ง node (ไม่ต้องมี node_modules) และเบราว์เซอร์ (ไม่ต้องมี import map)
 import { ml_dsa44 } from './public/pq-vendor/@noble/post-quantum/ml-dsa.js';
+import { slh_dsa_shake_128f } from './public/pq-vendor/@noble/post-quantum/slh-dsa.js';
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 
@@ -131,6 +132,11 @@ function verifyReceiptEd25519(payloadStr, signature, pubJwk) {
 // Ed25519 = node:crypto (pk_b64 เป็น SPKI DER 44 ไบต์) · ML-DSA-44 = vendor ในเครื่อง + context "sovereign-pq-receipt/v1"
 // หลักเดิม: ตรวจไม่ผ่านชั้นใดชั้นหนึ่ง = ไม่รับลงบัญชี — ขาดตัวใดตัวหนึ่งก็ไม่รับ
 const ALG_PROFILE_PQ = 'sovereign.ed25519+ml_dsa44.v1';
+const ALG_PROFILE_SLH_FAST = 'sovereign.ed25519+ml_dsa44+slh_dsa128f.v1';
+// ชั้น SLH ตามรุ่นที่ใบประกาศเอง (พอร์ตจาก sovereign-pq-identity/src/identity.js)
+const SLH_VARIANTS = {
+  [ALG_PROFILE_SLH_FAST]: { keyField: 'slh_dsa128f', impl: slh_dsa_shake_128f, label: 'SLH-DSA-128f' },
+};
 const PQ_CONTEXT = Buffer.from('sovereign-pq-receipt/v1', 'utf8');
 
 function canonicalJson(value) {
@@ -144,7 +150,8 @@ function verifyReceiptEnvelope(e) {
   const fail = (error) => ({ ok: false, error });
   try {
     if (!e || typeof e !== 'object') return fail('envelope malformed');
-    if (e.alg_profile !== ALG_PROFILE_PQ) return fail('alg_profile not supported at this node: ' + String(e.alg_profile || ''));
+    const slhVariant = SLH_VARIANTS[e.alg_profile] || null;
+    if (e.alg_profile !== ALG_PROFILE_PQ && !slhVariant) return fail('alg_profile not supported at this node: ' + String(e.alg_profile || ''));
     if (!e.id || !e.issued_at || e.payload === undefined) return fail('envelope core missing');
     const p = e.payload;
     if (!p || p.type !== 'SVR-RECEIPT' || !p.id || !Number.isFinite(p.total) || !Array.isArray(p.items)) return fail('receipt malformed');
@@ -164,7 +171,15 @@ function verifyReceiptEnvelope(e) {
     const pk = Buffer.from(sigs.ml_dsa44.pk_b64, 'base64');
     if (pk.length !== ml_dsa44.lengths.publicKey) return fail('ml_dsa44 pk length ' + pk.length + ' != ' + ml_dsa44.lengths.publicKey);
     if (ml_dsa44.verify(Buffer.from(sigs.ml_dsa44.sig_b64, 'base64'), core, pk, { context: PQ_CONTEXT }) !== true) return fail('unverified ml_dsa44 signature');
-    return { ok: true };
+    // 3) SLH-DSA-128f (FIPS 205) — เฉพาะโปรไฟล์สามชั้น · ต้องผ่านด้วย (ขาด/แปะข้ามรุ่น = ปฏิเสธทั้งใบ)
+    if (slhVariant) {
+      const layer = sigs[slhVariant.keyField];
+      if (!layer?.pk_b64 || !layer?.sig_b64) return fail('missing ' + slhVariant.keyField + ' signature');
+      const spk = Buffer.from(layer.pk_b64, 'base64');
+      if (spk.length !== slhVariant.impl.lengths.publicKey) return fail(slhVariant.keyField + ' pk length ' + spk.length + ' != ' + slhVariant.impl.lengths.publicKey);
+      if (slhVariant.impl.verify(Buffer.from(layer.sig_b64, 'base64'), core, spk, { context: PQ_CONTEXT }) !== true) return fail('unverified ' + slhVariant.keyField + ' signature');
+    }
+    return { ok: true, verified: slhVariant ? 'ed25519+ml_dsa44+slh_dsa128f' : 'ed25519+ml_dsa44' };
   } catch { return fail('envelope verification error'); }
 }
 
@@ -298,11 +313,15 @@ for (const [route, [file, mime]] of STATIC_FILES) {
 // เป็นแฟ้มชุดเดียวกับที่ server ใช้ตรวจ ML-DSA ด้านบน — sw.js precache รายการนี้ด้วยเพื่อขายออฟไลน์
 const VENDOR_FILES = [
   '/pq-vendor/@noble/post-quantum/ml-dsa.js',
+  '/pq-vendor/@noble/post-quantum/slh-dsa.js',
   '/pq-vendor/@noble/post-quantum/_crystals.js',
   '/pq-vendor/@noble/post-quantum/utils.js',
   '/pq-vendor/@noble/curves/utils.js',
   '/pq-vendor/@noble/curves/abstract/fft.js',
   '/pq-vendor/@noble/curves/abstract/modular.js',
+  '/pq-vendor/@noble/hashes/sha2.js',
+  '/pq-vendor/@noble/hashes/hmac.js',
+  '/pq-vendor/@noble/hashes/_md.js',
   '/pq-vendor/@noble/hashes/sha3.js',
   '/pq-vendor/@noble/hashes/_u64.js',
   '/pq-vendor/@noble/hashes/utils.js',
@@ -379,23 +398,23 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (u.pathname === '/receipts' && req.method === 'POST') {
-      const raw = await readBody(req, 16 * 1024);
+      const raw = await readBody(req, 96 * 1024);
       let body;
       try { body = JSON.parse(raw.toString('utf8')); } catch { return json(res, 400, { error: 'invalid json' }); }
 
-      // ซองโพสต์-ควอนตัม (Q-09): {id, issued_at, payload, alg_profile, signatures{ed25519, ml_dsa44}}
+      // ซองโพสต์-ควอนตัม (Q-09 พร้อมชั้นที่สาม Q-13): {id, issued_at, payload, alg_profile, signatures{ed25519, ml_dsa44[, slh_dsa128f]}}
       // ตรวจครบทุกชั้นของโปรไฟล์ก่อนลงบัญชี — ตัวใดขาดหรือไม่ผ่าน = ปฏิเสธทั้งใบ
       if (body?.envelope) {
         const env = body.envelope;
         const v = verifyReceiptEnvelope(env);
         if (!v.ok) return json(res, 400, { error: v.error });
         const id = String(env.id).slice(0, 64);
-        if (receipts.has(id)) return json(res, 200, { ok: true, id, duplicate: true });
+        if (receipts.has(id)) return json(res, 200, { ok: true, id, duplicate: true, verified: v.verified });
         const entry = {
           receivedAt: Date.now(), id,
           payload: typeof body.payload === 'string' ? body.payload.slice(0, 16384) : JSON.stringify(env.payload).slice(0, 16384),
           signature: typeof body.signature === 'string' ? body.signature.slice(0, 200) : '',
-          envelope: env, verified: 'ed25519+ml_dsa44',
+          envelope: env, verified: v.verified,
           source: req.socket?.remoteAddress || '',
         };
         receipts.set(id, entry);
@@ -404,7 +423,7 @@ const server = http.createServer(async (req, res) => {
           for (const k of drop) receipts.delete(k);
         }
         appendReceiptLog(entry);
-        return json(res, 200, { ok: true, id, duplicate: false, verified: 'ed25519+ml_dsa44' });
+        return json(res, 200, { ok: true, id, duplicate: false, verified: v.verified });
       }
 
       // แนวเดิม (Ed25519 ชั้นเดียว): สลิปเก่าจาก POS รุ่นก่อน/โหนดเพื่อนที่ยังไม่อัปเดต ยังเข้าได้เต็มสิทธิ์

@@ -98,6 +98,7 @@ footer a:hover{color:var(--green)}
       (คู่กุญแจเกิดในเครื่อง ไม่เคยออกจากเครื่อง) จากนั้นรอในคิว — เมื่อโหนดกลับมา
       ระบบจะ <b style="color:var(--txt)">Sync ตาม Batch และส่งอัปเดตเข้าบัญชีโหนดโดยอัตโนมัติ</b>
       โดยโหนดจะตรวจลายเซ็นทุกใบก่อนลงบัญชี (ใจกลางเลขหน้าบัญชีซ้ำตามกำหนดรหัสสลิป)
+      — เลือก <b style="color:var(--txt)">สลิปสามชั้น SLH-DSA-128f</b> (FIPS 205) ได้ที่ตะกร้าเมื่ออยากได้ความมั่นคงเพิ่มอีกชั้น
     </p>
     <div class="notice" id="notice" hidden></div>
   </section>
@@ -125,8 +126,14 @@ footer a:hover{color:var(--green)}
       <div><label>ลูกค้า (เว้นได้ — บันทึกเชิงเงียบ)</label><input type="text" id="customer" size="20" placeholder="แม่ค้าสวน A"></div>
       <div class="total"><span id="cartTotal">0.00</span> <span class="meta">฿ (THB)</span></div>
     </div>
+    <div class="formrow" style="margin-top:10px;align-items:center">
+      <div style="flex-direction:row;align-items:center;gap:8px;display:flex">
+        <input type="checkbox" id="slhFast">
+        <label for="slhFast" style="margin:0;font-family:var(--thai);font-size:.74rem;letter-spacing:0;color:var(--dim)">สลิปสามชั้น + SLH-DSA-128f (FIPS 205) — เซ็นช้าลง ~6–7 วิ/ใบ แลกใบใหญ่ขึ้นเป็น ~28.6 KB (วัดจริงบนเครื่องนี้)</label>
+      </div>
+    </div>
     <div class="btnrow">
-      <button class="btn" id="checkoutBtn" type="button" title="ตัดสต็อก + ลงบัญชีขาย + ลงลายมือชื่อสลิป ทั้งหมดในเครื่อง">ขายเลย (ตัดสต็อก + สลิป Ed25519)</button>
+      <button class="btn" id="checkoutBtn" type="button" title="ตัดสต็อก + ลงบัญชีขาย + ลงลายมือชื่อสลิป ทั้งหมดในเครื่อง">ขายเลย (ตัดสต็อก + สลิป 2/3 ชั้น)</button>
       <button class="btn-danger" id="cartClearBtn" type="button">ล้างตะกร้า</button>
     </div>
   </section>
@@ -159,7 +166,14 @@ footer a:hover{color:var(--green)}
 try {
   const { ml_dsa44 } = await import('/pq-vendor/@noble/post-quantum/ml-dsa.js');
   window.PQML = ml_dsa44;
+  window.dispatchEvent(new Event('pq-ml-ready'));
 } catch (e) { console.warn('ML-DSA โหลดไม่ได้ — สลิปใหม่จะเป็น Ed25519 ชั้นเดียว:', e && e.message); }
+// ชั้นที่สามแบบเร็ว (SLH-DSA-128f · FIPS 205) — เปิดเฉพาะเมื่อผู้ขายเลือก (ช้ากว่า ~6–7 วิ/ใบ แลกใบใหญ่ขึ้นเป็น ~28.6 KB)
+try {
+  const { slh_dsa_shake_128f } = await import('/pq-vendor/@noble/post-quantum/slh-dsa.js');
+  window.PQSLH = slh_dsa_shake_128f;
+  window.dispatchEvent(new Event('pq-slh-ready'));
+} catch (e) { console.warn('SLH-DSA โหลดไม่ได้ — ตัวเลือกสลิปสามชั้นจะใช้งานไม่ได้:', e && e.message); }
 </script>
 <script>
 (function(){
@@ -242,6 +256,23 @@ try {
     mlKeys = { sk: kp.secretKey, pk: kp.publicKey, pkB64 };
     return mlKeys;
   }
+
+  // ── กุญแจ SLH-DSA-128f ของอุปกรณ์ (เกิดครั้งเดียว เก็บในเครื่องเท่านั้น) — ใช้เมื่อผู้ขายเปิดสลิปสามชั้น ──
+  let slhKeys = null;
+  async function ensureSlhKey(){
+    if (slhKeys || !window.PQSLH) return slhKeys;
+    const rows = await getAll('keys');
+    const rec = rows.find(r => r.id === 'device-slh128f');
+    if (rec && rec.sk_b64 && rec.pk_b64) {
+      slhKeys = { sk: b64ToBytes(rec.sk_b64), pk: b64ToBytes(rec.pk_b64), pkB64: rec.pk_b64 };
+      return slhKeys;
+    }
+    const kp = window.PQSLH.keygen();
+    const pkB64 = bufToB64(kp.publicKey);
+    await idbPut('keys', { id: 'device-slh128f', sk_b64: bufToB64(kp.secretKey), pk_b64: pkB64, createdAt: Date.now() });
+    slhKeys = { sk: kp.secretKey, pk: kp.publicKey, pkB64 };
+    return slhKeys;
+  }
   // pk ของ Ed25519 ในซอง = SPKI DER 44 ไบต์ (รูปเดียวกับ readEdPub ฝั่ง node:crypto และหน้าตรวจ verify.html)
   let edSpkiCache = null;
   async function edSpkiB64Of(){
@@ -279,7 +310,16 @@ try {
   // bytes ที่ถูกเซ็น = canonical JSON ของแกน {id, issued_at, payload, alg_profile} (เรียงคีย์ ไม่มีช่องว่าง)
   // Ed25519 เซ็นแกนเดียวกัน (WebCrypto) · ML-DSA-44 เซ็นแกนเดียวกัน + context "sovereign-pq-receipt/v1"
   const ALG_PROFILE = 'sovereign.ed25519+ml_dsa44.v1';
+  const ALG_PROFILE_SLH_FAST = 'sovereign.ed25519+ml_dsa44+slh_dsa128f.v1';
   const PQ_CONTEXT = enc.encode('sovereign-pq-receipt/v1');
+  const SLH_STORAGE_KEY = 'sovereign-pos:slh-fast';
+  let slhEnabled = false;
+  try { slhEnabled = localStorage.getItem(SLH_STORAGE_KEY) === '1'; } catch { slhEnabled = false; }
+  // ชั้น SLH ตามรุ่นที่ใบประกาศเอง — พอร์ตจาก sovereign-pq-identity/src/identity.js
+  function slhVariantForProfile(profile){
+    if (profile !== ALG_PROFILE_SLH_FAST) return null;
+    return { keyField: 'slh_dsa128f', impl: window.PQSLH, label: 'SLH-DSA-128f' };
+  }
   function canonical(value){
     if (value === null || typeof value !== 'object') return JSON.stringify(value);
     if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
@@ -291,7 +331,10 @@ try {
     try {
       const [spki, ml] = await Promise.all([edSpkiB64Of(), ensureMlKey()]);
       if (!spki || !ml) return null;
-      const envelope = { id: sale.id, issued_at: new Date(sale.ts).toISOString(), payload: payloadObj, alg_profile: ALG_PROFILE };
+      // สามชั้นเมื่อผู้ขายเปิดไว้และไลบรารีโหลดได้ — ไม่ได้ = ถอยมาสองชั้นอย่างเงียบ ๆ (ขายไม่สะดุด)
+      const slh = slhEnabled && window.PQSLH ? await ensureSlhKey() : null;
+      const profile = slh ? ALG_PROFILE_SLH_FAST : ALG_PROFILE;
+      const envelope = { id: sale.id, issued_at: new Date(sale.ts).toISOString(), payload: payloadObj, alg_profile: profile };
       const bytes = pqCoreBytes(envelope);
       const edSig = await crypto.subtle.sign({ name: 'Ed25519' }, privKey, bytes);
       const mlSig = window.PQML.sign(bytes, ml.sk, { context: PQ_CONTEXT });
@@ -299,13 +342,19 @@ try {
         ed25519: { pk_b64: spki, sig_b64: bufToB64(edSig) },
         ml_dsa44: { pk_b64: ml.pkB64, sig_b64: bufToB64(mlSig) },
       };
+      if (slh) {
+        const slhSig = window.PQSLH.sign(bytes, slh.sk, { context: PQ_CONTEXT });
+        envelope.signatures.slh_dsa128f = { pk_b64: slh.pkB64, sig_b64: bufToB64(slhSig) };
+      }
       return envelope;
     } catch (e) { console.warn('ซองโพสต์-ควอนตัมสร้างไม่ได้ — สลิปนี้เป็น Ed25519 ชั้นเดียว:', e && e.message); return null; }
   }
   async function verifyPqEnvelope(e){
-    const out = { valid: false, ed25519: false, ml_dsa44: false };
+    const out = { valid: false, ed25519: false, ml_dsa44: false, slh_dsa128f: null, slh_layer: null };
     try {
-      if (!e || !e.id || !e.issued_at || e.payload === undefined || e.alg_profile !== ALG_PROFILE) return out;
+      if (!e || !e.id || !e.issued_at || e.payload === undefined) return out;
+      const sv = slhVariantForProfile(e.alg_profile);
+      if (e.alg_profile !== ALG_PROFILE && !sv) return out;
       const bytes = pqCoreBytes(e);
       const sigs = e.signatures || {};
       if (!sigs.ed25519?.pk_b64 || !sigs.ed25519?.sig_b64 || !sigs.ml_dsa44?.pk_b64 || !sigs.ml_dsa44?.sig_b64) return out;
@@ -315,6 +364,15 @@ try {
       out.ml_dsa44 = Boolean(window.PQML) && pk.length === window.PQML.lengths.publicKey
         && window.PQML.verify(b64ToBytes(sigs.ml_dsa44.sig_b64), bytes, pk, { context: PQ_CONTEXT }) === true;
       out.valid = out.ed25519 === true && out.ml_dsa44 === true;
+      if (sv) {
+        out.slh_layer = sv.keyField;
+        const layer = sigs[sv.keyField];
+        if (!layer?.pk_b64 || !layer?.sig_b64 || !sv.impl) { out.valid = false; return out; }
+        const spk = b64ToBytes(layer.pk_b64);
+        out[sv.keyField] = spk.length === sv.impl.lengths.publicKey
+          && sv.impl.verify(b64ToBytes(layer.sig_b64), bytes, spk, { context: PQ_CONTEXT }) === true;
+        out.valid = out.valid && out[sv.keyField] === true;
+      }
     } catch (e2) { void e2; }
     return out;
   }
@@ -452,7 +510,11 @@ try {
   // ── บัญชีขาย render + คิวซิงก์ ─────────────────────────────────────────────────
   function sigChip(sale){
     if (sale.receipt && sale.receipt.localVerify === 'fail') return '<span class="tag sigbad">✗ ตรวจล้มเหลว</span>';
-    if (sale.receipt && sale.receipt.envelope && sale.receipt.localVerify === 'ok') return '<span class="tag sig">✓ Ed25519+ML-DSA · ' + esc(sale.receipt.envelope.signatures.ed25519.sig_b64.slice(0, 6)) + '…</span>';
+    const env = sale.receipt && sale.receipt.envelope;
+    if (env && (sale.receipt.localVerify === 'ok' || sale.receipt.localVerify === 'ok3')) {
+      const label = sale.receipt.localVerify === 'ok3' ? 'Ed25519+ML-DSA+SLH' : 'Ed25519+ML-DSA';
+      return '<span class="tag sig">✓ ' + label + ' · ' + esc(env.signatures.ed25519.sig_b64.slice(0, 6)) + '…</span>';
+    }
     if (sale.receipt && sale.receipt.signature) return '<span class="tag sig">✓ Ed25519 · ' + esc(sale.receipt.signature.slice(0, 6)) + '…</span>';
     return '<span class="tag sigbad">ไม่ลงชื่อ</span>';
   }
@@ -483,6 +545,8 @@ try {
 
   // ── ขายจริง flow ──────────────────────────────────────────────────────────────
   async function checkout(){
+    // ปุ่มถูกล็อกระหว่างขาย — สลิปสามชั้นใช้ CPU ~6–7 วิ (กดซ้ำระหว่างนั้นจะไม่ได้ใบที่สอง)
+    $('checkoutBtn').disabled = true;
     const customer = $('customer').value.trim().slice(0, 60);
     const out = await checkoutSales(customer);
     if (!out.ok) { setStatus('no', out.reason); await renderCart(); return; }
@@ -490,6 +554,11 @@ try {
     // สลิปสองชั้นตั้งแต่ที่ขาย (Q-09): รูปเดิม {payload, signature} + ซองโพสต์-ควอนตัมตามไลบรารี
     //   รูปเดิม = โหนดเก่า/ผู้อ่านเดิมยังตรวจได้เต็มสิทธิ์ · ซอง = verify.html กับโหนดใหม่ตรวจ Ed25519+ML-DSA ได้ทันที
     let payload = null, signature = '', envelope = null, signOk = false;
+    // สลิปสามชั้นกิน CPU ต่อเนื่อง ~6–7 วิ (SLH-DSA-128f เป็น JS ล้วน) — ประกาศให้ผู้ขายเห็นก่อนหน้าจอค้าง
+    if (slhEnabled && window.PQSLH) {
+      renderStatus('กำลังเซ็นสลิปสามชั้น SLH-DSA-128f (~6–7 วิ) — อย่าปิดแท็บ');
+      await new Promise((r) => setTimeout(r, 60)); // ให้เบราว์เซอร์วาดสถานะก่อนถูกบล็อกด้วยการเซ็น
+    }
     try {
       const payloadObj = receiptPayload(sale, pubJwk);
       payload = JSON.stringify(payloadObj);
@@ -502,8 +571,9 @@ try {
     try {
       if (signOk) {
         const okOld = await b64uVerify(payload, signature, null);
-        const okPq = envelope ? (await verifyPqEnvelope(envelope)).valid : true;
-        localVerify = okOld && okPq ? (envelope ? 'ok' : 'ok-ed') : 'fail';
+        const v = envelope ? await verifyPqEnvelope(envelope) : null;
+        const okPq = v ? v.valid : true;
+        localVerify = okOld && okPq ? (v ? (v.slh_layer ? 'ok3' : 'ok') : 'ok-ed') : 'fail';
       }
     } catch (e) { void e; }
     const rec = { ...sale, receipt: { payload, signature: signOk ? signature : null, envelope: envelope || null, localVerify }, sync: { state: 'queued', attempts: 0, lastTry: 0, reason: '' } };
@@ -512,14 +582,14 @@ try {
     $('customer').value = '';
     await renderCart();
     await renderSales(signOk
-      ? 'ขายสำเร็จ — สลิป ' + sale.id + ' ลงชื่อ' + (envelope ? ' Ed25519+ML-DSA (สองชั้น)' : ' Ed25519') + ' ✓ (รอซิงก์เข้าโหนด)'
+      ? 'ขายสำเร็จ — สลิป ' + sale.id + ' ลงชื่อ' + (envelope ? (envelope.alg_profile === ALG_PROFILE_SLH_FAST ? ' Ed25519+ML-DSA+SLH-DSA (สามชั้น)' : ' Ed25519+ML-DSA (สองชั้น)') : ' Ed25519') + ' ✓ (รอซิงก์เข้าโหนด)'
       : 'ขายสำเร็จ — ยังไม่มีลายเซ็น');
     // ขายเสร็จลองส่งเข้าโหนดเลย (ถ้าออนไลน์) — ไม่บล็อก UI
     setTimeout(() => { flushSilent(); }, 1000);
   }
 
   // ── Sync engine: ส่งสลิปที่ค้างเข้าโหนด (โหนดตรวจลายเซ็นก่อนลงบัญชี) ─────────────
-  async function flushSilent(){ try { await flushQueue(false); } catch (e) { void e; } }
+  async function flushSilent(){ try { const n = await flushQueue(false); if (n) await renderSales('ซิงก์เข้าโหนดแล้ว ' + n + ' ใบ'); } catch (e) { void e; } }
 
   async function flushQueue(verbose){
     if (!navigator.onLine) { if (verbose) setStatus('no', 'ออฟไลน์ — คิวยังอยู่ในเครื่อง (ส่งอัตโนมัติเมื่อกลับมา)'); return 0; }
@@ -606,27 +676,33 @@ try {
     await new Promise((res) => { const t = tx(['cart'], 'readwrite'); t.objectStore('cart').clear(); t.oncomplete = () => res(); t.onerror = () => res(); });
     await renderCart();
   });
-  $('checkoutBtn').addEventListener('click', checkout);
+  $('checkoutBtn').addEventListener('click', () => { checkout().finally(() => { $('checkoutBtn').disabled = false; }); });
   $('flushBtn').addEventListener('click', () => flushQueue(true));
   $('verifyAllBtn').addEventListener('click', async () => {
     if (!keyReady) { setStatus('no', 'ยังไม่มีกุญแจจาก Import/เขียน — เปิดด้วยเบราว์เซอร์ที่รองรับ Ed25519'); return; }
     const list = await getAll('sales');
-    let good = 0, pq = 0;
+    let good = 0, two = 0, three = 0;
     for (const s of list) {
-      let ok = false, twoLayer = false;
+      let ok = false, twoLayer = false, threeLayer = false;
       if (s.receipt && s.receipt.envelope) {
-        // ซองสองชั้น: Ed25519 ตรวจเสมอ · ML-DSA ตรวจเมื่อ vendor โหลดได้ (เครื่องที่ไม่รองรับไม่นับว่าใบพัง)
-        const v = await verifyPqEnvelope(s.receipt.envelope);
-        ok = v.ed25519 === true && (!window.PQML || v.ml_dsa44 === true);
+        // ซองตามโปรไฟล์ของใบเอง: Ed25519 ตรวจเสมอ · ML-DSA/SLH ตรวจเมื่อ vendor โหลดได้
+        // (เครื่องที่โหลด vendor ไม่ได้ ไม่นับว่าใบพัง — แต่ถ้า vendor มีแล้วไม่ผ่าน = พังจริง)
+        const env = s.receipt.envelope;
+        const v = await verifyPqEnvelope(env);
+        const sv = slhVariantForProfile(env.alg_profile);
+        const mlOk = !window.PQML || v.ml_dsa44 === true;
+        const slhOk = !sv || (window.PQSLH ? v[sv.keyField] === true : true);
+        ok = v.ed25519 === true && mlOk && slhOk;
         twoLayer = ok && Boolean(window.PQML) && v.ml_dsa44 === true;
+        threeLayer = twoLayer && Boolean(sv) && v[sv.keyField] === true;
       } else if (s.receipt && s.receipt.payload && s.receipt.signature) {
         ok = await b64uVerify(s.receipt.payload, s.receipt.signature, null);
       } else continue;
-      s.receipt.localVerify = ok ? (twoLayer ? 'ok' : 'ok-ed') : 'fail';
-      if (ok) { good++; if (twoLayer) pq++; }
+      s.receipt.localVerify = ok ? (threeLayer ? 'ok3' : twoLayer ? 'ok' : 'ok-ed') : 'fail';
+      if (ok) { good++; if (twoLayer) two++; if (threeLayer) three++; }
       await idbPut('sales', s);
     }
-    await renderSales('ตรวจลายเซ็น: ผ่าน ' + good + ' / ' + list.length + ' ใบ' + (pq ? ' (สองชั้น Ed25519+ML-DSA ' + pq + ' ใบ)' : '') + ' — ตรวจในเครื่อง พิสูจน์ได้แม้ออฟไลน์');
+    await renderSales('ตรวจลายเซ็น: ผ่าน ' + good + ' / ' + list.length + ' ใบ' + (two ? ' (สองชั้นขึ้นไป ' + two + ' ใบ · สามชั้น ' + three + ' ใบ)' : '') + ' — ตรวจในเครื่อง พิสูจน์ได้แม้ออฟไลน์');
   });
   $('exportBtn').addEventListener('click', async () => {
     const list = (await getAll('sales')).sort((a, b) => b.ts - a.ts);
@@ -649,6 +725,29 @@ try {
     catch (e) { setStatus('no', 'IndexedDB ใช้ไม่ได้: ' + e.message); return; }
     await seedIfEmpty();
     await ensureDeviceKey();
+    // ตัวเลือกสลิปสามชั้น — คงค่าที่ผู้ขายเลือกไว้ในเครื่อง (localStorage) · โหลด vendor ไม่ได้ = ปิดตัวเลือก
+    // โมดูล vendor (deferred) อาจยังโหลดไม่เสร็จตอนสคริปต์นี้รัน — รอสัญญาณสั้น ๆ ก่อนตัดสิน
+    if (!window.PQSLH) {
+      await new Promise((res) => {
+        const done = () => res();
+        window.addEventListener('pq-slh-ready', done, { once: true });
+        setTimeout(done, 2000);
+      });
+    }
+    const slhBox = $('slhFast');
+    if (slhBox) {
+      slhBox.checked = slhEnabled && Boolean(window.PQSLH);
+      slhEnabled = slhBox.checked;
+      if (!window.PQSLH) {
+        slhBox.disabled = true;
+        slhBox.setAttribute('title', 'โหลดไลบรารี SLH-DSA ไม่ได้ (เบราว์เซอร์หรือแคชเก่า)');
+      }
+      slhBox.addEventListener('change', () => {
+        slhEnabled = slhBox.checked && Boolean(window.PQSLH);
+        try { localStorage.setItem(SLH_STORAGE_KEY, slhEnabled ? '1' : '0'); } catch {}
+        renderStatus(slhEnabled ? 'เปิดสลิปสามชั้น SLH-DSA-128f — ใบใหม่จะเซ็นช้าลง ~6–7 วิ/ใบ (ใบราว 28.6 KB)' : 'กลับเป็นสลิปสองชั้น Ed25519+ML-DSA');
+      });
+    }
     await renderCatalog();
     await renderCart();
     await renderSales();

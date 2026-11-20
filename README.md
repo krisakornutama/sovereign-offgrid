@@ -22,7 +22,7 @@
 
 | ระบบ | ทำอะไร | ลิงก์ LIVE |
 |---|---|---|
-| 🛒 **Offline POS** | แคตตาล็อก ตะกร้า ตัดสต็อกจริง · ใบเสร็จ**เซ็นด้วยกุญแจ Ed25519 ในเครื่อง** · เน็ตหายก็ขายต่อ สลิปซิงก์เองเมื่อกลับมาออนไลน์ | [เปิดหน้าร้าน](https://krisakornutama.github.io/sovereign-offgrid/sovereignty/public/shop.html) |
+| 🛒 **Offline POS** | แคตตาล็อก ตะกร้า ตัดสต็อกจริง · ใบเสร็จ**เซ็นด้วยกุญแจ Ed25519 ในเครื่อง** (แนบชั้นโพสต์-ควอนตัม ML-DSA-44 · เลือกชั้นที่สาม SLH-DSA-128f ได้ที่ตะกร้า) · เน็ตหายก็ขายต่อ สลิปซิงก์เองเมื่อกลับมาออนไลน์ | [เปิดหน้าร้าน](https://krisakornutama.github.io/sovereign-offgrid/sovereignty/public/shop.html) |
 | 💬 **LAN Messenger** | แชทระหว่างเครื่องบนสัญญาณ LAN เดียวกัน (UDP broadcast + REST ผ่าน mesh node พอร์ต 4200) — ไม่ใช้เน็ต | [เปิดห้องแชท](https://krisakornutama.github.io/sovereign-offgrid/sovereignty/public/lan-messenger.html) |
 | 📡 **NFC Check-in** | แตะแท็ก NFC ผ่านมือถือ (Android Chrome) บันทึกงานฟาร์ม/งานแปลงปลูก ลง IndexedDB ในเครื่อง | [เปิด NFC](https://krisakornutama.github.io/sovereign-offgrid/sovereignty/public/nfc-checkin.html) |
 | 📶 **BLE Sensors** | เชื่อมเซนเซอร์ Bluetooth (Xiaomi LYWSD03MMC, ESP32+BME280) อ่านอุณหภูมิ/ความชื้น/แบตเตอรี่ ลง IndexedDB | [เปิดเซนเซอร์](https://krisakornutama.github.io/sovereign-offgrid/sovereignty/public/ble-sensors.html) |
@@ -108,6 +108,7 @@ POST /receipts    → รับสลิปจาก POS — ตรวจ Ed2551
 - ✓ **โหนดไม่เชื่อฝั่ง client** — สลิปที่ยื่นเข้ามาถูกตรวจลายเซ็นอีกครั้งฝั่ง Node ก่อนลงบัญชีเสมอ
 - ✓ **Idempotent (ส่งซ้ำได้)** — ระบบ dedupe ตาม `id` ของใบเสร็จ เน็ตหลุดกลางทางแล้วส่งซ้ำก็ไม่เกิดใบสองใบ
 - ✓ **ตัดสต็อกแบบ atomic** — สต็อกไม่พอ ระบบยกเลิกทั้งรายการ ไม่มีการบันทึกครึ่ง ๆ กลาง ๆ
+- ✓ **สลิปโพสต์-ควอนตัม (Q-09 / Q-13 ต่อยอด)** — ทุกใบมีซอง `Ed25519+ML-DSA-44` เพิ่มจากลายเซ็นเดิม และผู้ขายเลือกแนบชั้นที่สาม `SLH-DSA-128f` (FIPS 205) ได้ที่ตะกร้า — วัดจริง: ใบ ~28.6 KB, เซ็น ~6–7 วิ/ใบ, โหนดตรวจเพิ่ม ~72–148 ms · ตรวจซ้ำได้ด้วย `sovereign-pq-identity` สลับอิมพลีเมนต์ (ผลทดสอบใน [`README-MESH`](sovereignty/README-MESH.md#สลิปสามชั้น-slh-dsa-128f-ต่อยอด-q-13--2026-11-20))
 
 <div align="center">
 <img src="docs/images/pos-offline.png" alt="โหมดออฟไลน์ — ป้ายแจ้งขายได้ต่อ สลิปอยู่ในคิวเครื่องนี้" width="640">
@@ -115,6 +116,7 @@ POST /receipts    → รับสลิปจาก POS — ตรวจ Ed2551
 </div>
 
 > 🧪 **ทดสอบจริงตอนสร้างระบบ:** ขาย 210฿ → ใบเสร็จเซ็น Ed25519 สำเร็จ → ตรวจลายเซ็นย้อนกลับผ่าน ✓ → ซิงก์เข้าบัญชีโหนด (มี 2 ใบใน ledger)
+> 🔏 **ทดสอบสลิปสามชั้น (20 พ.ย. 2026):** ติ๊กที่ตะกร้า → เซ็น 6.3 วิ (28,592 B) → chip `✓ Ed25519+ML-DSA+SLH` → โหนดคืน `verified: ed25519+ml_dsa44+slh_dsa128f` → ตรวจซองเดียวกันด้วย `sovereign-pq-identity` ผ่านครบสามชั้น · ใบถูกแก้ / ตัดชั้น SLH / แปะลายเซ็นข้ามใบ = `400` ทุกกรณี
 
 ---
 

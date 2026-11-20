@@ -21,11 +21,15 @@ const outRoot = path.join(__dirname, 'public', 'pq-vendor');
 // + LICENSE ทุกแพ็กเกจ (MIT — กฎ attribution ของ vendor ในโปรเจกต์นี้)
 const FILES = [
   '@noble/post-quantum/ml-dsa.js',
+  '@noble/post-quantum/slh-dsa.js',
   '@noble/post-quantum/_crystals.js',
   '@noble/post-quantum/utils.js',
   '@noble/curves/utils.js',
   '@noble/curves/abstract/fft.js',
   '@noble/curves/abstract/modular.js',
+  '@noble/hashes/sha2.js',
+  '@noble/hashes/hmac.js',
+  '@noble/hashes/_md.js',
   '@noble/hashes/sha3.js',
   '@noble/hashes/_u64.js',
   '@noble/hashes/utils.js',
@@ -37,6 +41,13 @@ const FILES = [
 // bare specifier → relative path จากโฟลเดอร์ของแฟ้มนั้น (fft.js/modular.js/แฟ้ม hashes ใช้ relative อยู่แล้ว)
 const REWRITE = {
   '@noble/post-quantum/ml-dsa.js': { '@noble/curves/utils.js': '../curves/utils.js', '@noble/hashes/sha3.js': '../hashes/sha3.js' },
+  '@noble/post-quantum/slh-dsa.js': {
+    '@noble/hashes/hmac.js': '../hashes/hmac.js',
+    '@noble/curves/utils.js': '../curves/utils.js',
+    '@noble/hashes/sha2.js': '../hashes/sha2.js',
+    '@noble/hashes/sha3.js': '../hashes/sha3.js',
+    '@noble/hashes/utils.js': '../hashes/utils.js',
+  },
   '@noble/post-quantum/_crystals.js': { '@noble/curves/abstract/fft.js': '../curves/abstract/fft.js', '@noble/hashes/sha3.js': '../hashes/sha3.js' },
   '@noble/post-quantum/utils.js': { '@noble/hashes/utils.js': '../hashes/utils.js' },
   '@noble/curves/utils.js': { '@noble/hashes/utils.js': '../hashes/utils.js' },

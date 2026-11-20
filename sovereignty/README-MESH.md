@@ -37,7 +37,7 @@
 | `public/ble-sensors.html` | แดชบอร์ดเซนเซอร์ BLE (SIG preset + Nordic UART) — dual-engine จริง/จำลอง, DataView parser, IndexedDB |
 | `public/sw.js` | Service Worker — cache-first precache 8 รายการ · API สด (NEVER set) และทุก non-GET ไม่ cache · bump `VERSION` → ลบแคชชุดเก่าตอน activate (**เพิ่มหน้าใหม่ต้อง sync `PRECACHE` ↔ `PAGES` เสมอ**) |
 | `public/manifest.json` + `public/icon-192.png` / `icon-512.png` / `icon-512-maskable.png` | PWA identity: Sovereign OS App Hub (standalone, dark, shortcuts 3 หน้า) + ไอคอน 3 ขนาด (รูปแบบเดียวกับ favicon เว็บหลัก) |
-| `public/shop.html` | **หน้าร้านออฟไลน์ (POS)** — แคตตาล็อก/ตะกร้า/สต็อก/บัญชีขายลง IndexedDB, สลิปลงลายมือชื่อ Ed25519 ในเครื่อง, คิวซิงก์ flush อัตโนมัติเข้าโหนดเมื่อกลับมา (`/receipts`) |
+| `public/shop.html` | **หน้าร้านออฟไลน์ (POS)** — แคตตาล็อก/ตะกร้า/สต็อก/บัญชีขายลง IndexedDB, สลิปลงลายมือชื่อ Ed25519 ในเครื่อง (+ ซองโพสต์-ควอนตัม Ed25519+ML-DSA-44 และตัวเลือกชั้นที่สาม SLH-DSA-128f), คิวซิงก์ flush อัตโนมัติเข้าโหนดเมื่อกลับมา (`/receipts`) |
 | `data/receipts.jsonl` | **บัญชีใบเสร็จของโหนด** (append-only, dedupe ตาม id, โหลดกลับตอนบูต) — ข้อมูลธุรกิจจริงของเครื่อง · `.gitignore` กัน commit ไว้เหมือนของ scraper |
 | `package.json` | `npm start` — ต้อง Node >= 20 |
 | `Dockerfile` | node:22-alpine, USER node (non-root), healthcheck ยิง `/health` |
@@ -61,8 +61,8 @@ MESH_PEER_NAME="แม่บ้าน" MESH_PASSPHRASE="ฟ้า-สวรร�
 | `GET /peers` | รายชื่อเครื่องบน LAN (อายุไม่เกิน 30s) |
 | `GET /messages?since=N` | ข้อความใหม่ตั้งแต่ seq N (cursor) |
 | `POST /send` | ส่งข้อความทั้งกลุ่ม — `{"text":"..."}` (สูงสุด 2000 ตัวอักษร, body จำกัด 8KB) |
-| `POST /receipts` | รับสลิปขายจาก POS — รูปเก่า `{payload, signature}` ตรวจ Ed25519 ก่อนลงบัญชี · **รูปใหม่ (Q-09) `{payload, signature, envelope}`** ตรวจสองชั้น Ed25519 + ML-DSA-44 (FIPS 204 · canonical core + context `sovereign-pq-receipt/v1`) ครบทั้งชั้นจึงลงบัญชี · dedupe ตาม id (ยื่นซ้ำ = `duplicate:true` เงียบ ๆ) |
-| `GET /receipts?since=` | อ่านบัญชีใบเสร็จทั้งหมด/ใหม่ตั้งแต่ receivedAt N (ตรวจสอบตามตำแหน่งเวลา) — ใบสองชั้นมีแฟ้ม `envelope` ฝังมาด้วย ตรวจใหม่ได้ทุกเครื่อง |
+| `POST /receipts` | รับสลิปขายจาก POS — รูปเก่า `{payload, signature}` ตรวจ Ed25519 ก่อนลงบัญชี · **รูปใหม่ (Q-09) `{payload, signature, envelope}`** ตรวจสองชั้น Ed25519 + ML-DSA-44 (FIPS 204 · canonical core + context `sovereign-pq-receipt/v1`) ครบทั้งชั้นจึงลงบัญชี · **โปรไฟล์สามชั้น** (`…+slh_dsa128f.v1`) ตรวจเพิ่ม SLH-DSA-128f (FIPS 205) — ขาดหรือไม่ผ่านชั้นใดชั้นหนึ่ง = `400` ทั้งใบ · dedupe ตาม id (ยื่นซ้ำ = `duplicate:true` เงียบ ๆ) · body limit 96 KiB (ใบสามชั้น ~28.6 KB) |
+| `GET /receipts?since=` | อ่านบัญชีใบเสร็จทั้งหมด/ใหม่ตั้งแต่ receivedAt N (ตรวจสอบตามตำแหน่งเวลา) — ใบสอง/สามชั้นมีแฟ้ม `envelope` ฝังมาด้วย ตรวจใหม่ได้ทุกเครื่อง (มีฟิลด์ `verified` บอกชั้นที่ผ่านตอนรับเข้า) |
 
 ### สลิปสองชั้นตั้งแต่ที่ขาย (Q-09 · 2026-11-15)
 
@@ -77,6 +77,22 @@ MESH_PEER_NAME="แม่บ้าน" MESH_PASSPHRASE="ฟ้า-สวรร�
   (`public/pq-vendor/` — server ตรวจด้วยแฟ้มเดียวกับที่เสิร์ฟ, ไม่มี npm dependency ใหม่, SW v4 precache ครบไว้ขายออฟไลน์)
 - ตรวจใบใหม่ที่ไหนก็ได้: หน้าตรวจสาธารณะ `verify.html` (project-sovereign) · `cli.js ledger verify`
   (sovereign-pq-identity) · โหนดเองตอนรับเข้าบัญชี — ทดสอบจริงแล้วทั้งสามทางผ่าน (15 พ.ย. 2026)
+
+### สลิปสามชั้น SLH-DSA-128f (ต่อยอด Q-13 · 2026-11-20)
+
+ผู้ขายเลือกได้ที่ตะกร้า (checkbox "สลิปสามชั้น") — ค่าเลือกจำไว้ใน `localStorage` (`sovereign-pos:slh-fast`):
+
+- โปรไฟล์ `sovereign.ed25519+ml_dsa44+slh_dsa128f.v1` · ชั้นที่สามอยู่ฟิลด์ `slh_dsa128f` (pk 32 B · sig 17,088 B · seed 48 B)
+  · กุญแจเกิดครั้งเดียวในเครื่อง (IndexedDB `keys` id `device-slh128f`) · เซ็นแกน canonical เดียวกันด้วย context `sovereign-pq-receipt/v1`
+- **เป็น opt-in เพราะราคาที่ต้องจ่ายจริง (วัดบนเครื่องนี้ 20 พ.ย. 2026):** เซ็น ~6–7 วิ/ใบ (6,271–7,449 ms จาก 4 ใบ;
+  noble SLH-DSA เป็น JS ล้วน) และใบใหญ่ขึ้นจาก 5,810 B → **28,592–28,640 B** · ชั้นนี้ไม่บล็อกการขาย:
+  ระหว่างเซ็นปุ่มขายถูกล็อกและขึ้นข้อความ "กำลังเซ็นสลิปสามชั้น…" · ถ้าโหลด vendor ไม่ได้จะถอยเป็นสองชั้นเงียบ ๆ
+- **โหนดตรวจเพิ่มใน ~72–148 ms** (3 ครั้ง) และคืน `verified: "ed25519+ml_dsa44+slh_dsa128f"` ในบัญชี
+  (body limit ของ `/receipts` ขยับ 16 KiB → 96 KiB เพราะใบสามชั้น ~28.6 KB)
+- **ทดสอบจริง 20 พ.ย. 2026:** ขายผ่านเบราว์เซอร์ → chip `✓ Ed25519+ML-DSA+SLH` → ซิงก์เข้าโหนด →
+  ตรวจใบเดียวกับซองที่บันทึกด้วยไลบรารี `sovereign-pq-identity` (คนละอิมพลีเมนต์) = `valid` ครบสามชั้น
+  · ยัด payload แก้ (total=1) → 400 `unverified ed25519 signature` · ตัดชั้น SLH ออก → 400 `missing slh_dsa128f signature`
+  · แปะลายเซ็น ML-DSA จากใบสองชั้น → 400 `unverified ml_dsa44 signature` · ยื่นใบจริงซ้ำ → `duplicate:true`
 
 ### ผลทดสอบจริง (เครื่อง Windows, ผ่านแล้วทุกข้อ)
 
