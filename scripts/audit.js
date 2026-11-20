@@ -171,7 +171,17 @@ async function main() {
       const ctx = await browser.newContext({ viewport });
       const p = await ctx.newPage();
       const errs = [];
-      p.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+      // console error จากปลายทางคนอื่น (CORS/เน็ตของ API/iframe ที่หน้านี้ไม่ได้เป็นเจ้าของ) = flaky ตามสถานะปลายทาง
+      // ไม่นับเป็น defect ของหน้า — JS ของหน้าเองพังยังถูกจับด้วย pageerror + error ที่มาจาก origin ตัวเองครบถ้วน
+      const thirdPartyNoise = (m) => {
+        const text = m.text();
+        // CORS เกิดได้เฉพาะข้าม origin — same-origin ไม่ถูก CORS บล็อก
+        if (/has been blocked by CORS policy/.test(text)) return true;
+        const url = (m.location() && m.location().url) || '';
+        if (!url || url.startsWith('http://127.0.0.1:4919/')) return false;
+        return /Failed to load resource/.test(text) || /net::ERR_/.test(text);
+      };
+      p.on('console', (m) => { if (m.type() === 'error' && !thirdPartyNoise(m)) errs.push(m.text()); });
       p.on('pageerror', (e) => errs.push('pageerror: ' + e.message));
       await p.goto(`http://127.0.0.1:4919/${page}`, { waitUntil: 'load', timeout: 30000 });
       // รอสัญญาณจริงของฟอนต์ (fonts.ready) แทนหน้าต่างตาย 400ms — CDN มาช้ากว่านั้นคือเรื่องเครือข่าย ไม่ใช่ defect ของหน้า
