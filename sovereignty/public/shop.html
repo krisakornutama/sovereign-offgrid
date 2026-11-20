@@ -593,6 +593,11 @@ try {
 
   async function flushQueue(verbose){
     if (!navigator.onLine) { if (verbose) setStatus('no', 'ออฟไลน์ — คิวยังอยู่ในเครื่อง (ส่งอัตโนมัติเมื่อกลับมา)'); return 0; }
+    // /health มีเฉพาะโหนดที่รัน server.js (เสิร์ฟหน้านี้ที่ /shop) — บนเว็บ static (Pages) ไม่ต้องยิง 404 ใส่ console
+    if (location.pathname !== '/shop') {
+      if (verbose) renderSales('หน้านี้เป็นเดโม static — สลิปเก็บในเครื่องครบ ต้องซิงก์ผ่านโหนด (/shop)');
+      return 0;
+    }
     const unsynced = (await getAll('sales')).filter(s => (s.sync || {}).state !== 'synced' && s.receipt && s.receipt.signature);
     if (!unsynced.length) { if (verbose) renderSales('ไม่มีคิวค้าง — เข้าบัญชีครบแล้ว'); return 0; }
     // โหนดเป้าหมาย: โหนดของหน้านี้ก่อน แล้ว copy ให้เพื่อนที่ UDP เพิ่งเห็น (best effort)
