@@ -66,10 +66,14 @@ jobs:
           cp ./_headers _site/ 2>/dev/null || true
           cp ./.nojekyll _site/ 2>/dev/null || true
 
-          # 2) เว็บใหม่จาก Astro — ทับเฉพาะ path ที่มีทั้งคู่ (/ และ /projects/) ตัวใหม่ชนะ
+          # 2) ไฟล์ประกอบของหน้าเดิม: ปกหนังสือ (books.html) + หลักฐานวัดผล (guardmini.html)
+          cp -R ./assets _site/assets
+          cp -R ./evidence _site/evidence
+
+          # 3) เว็บใหม่จาก Astro — ทับเฉพาะ path ที่มีทั้งคู่ (/ และ /projects/) ตัวใหม่ชนะ
           cp -R web/dist/. _site/
 
-          # 3) POS ออฟไลน์ + vendor โพสต์-ควอนตัม — static ล้วน (sovereignty/public เท่านั้น)
+          # 4) POS ออฟไลน์ + vendor โพสต์-ควอนตัม — static ล้วน (sovereignty/public เท่านั้น)
           #    ไม่เอา server.js/README-MESH/Dockerfile/data (แบ็กเอนด์+ข้อมูลจริงต้องไม่ออกเว็บ)
           #    เหตุผล: README + badge ชี้ "LIVE POS" มาที่ /sovereignty/public/shop.html
           mkdir -p _site/sovereignty/public
