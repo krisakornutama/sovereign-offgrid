@@ -726,21 +726,25 @@ try {
     await seedIfEmpty();
     await ensureDeviceKey();
     // ตัวเลือกสลิปสามชั้น — คงค่าที่ผู้ขายเลือกไว้ในเครื่อง (localStorage) · โหลด vendor ไม่ได้ = ปิดตัวเลือก
-    // โมดูล vendor (deferred) อาจยังโหลดไม่เสร็จตอนสคริปต์นี้รัน — รอสัญญาณสั้น ๆ ก่อนตัดสิน
-    if (!window.PQSLH) {
-      await new Promise((res) => {
-        const done = () => res();
-        window.addEventListener('pq-slh-ready', done, { once: true });
-        setTimeout(done, 2000);
-      });
-    }
     const slhBox = $('slhFast');
     if (slhBox) {
-      slhBox.checked = slhEnabled && Boolean(window.PQSLH);
-      slhEnabled = slhBox.checked;
+      const pref = slhEnabled; // ค่าที่จำไว้ — ต้องไม่หายตอน vendor (deferred module) ยังมาไม่ถึง
+      const applySlhBox = () => {
+        if (window.PQSLH) {
+          slhBox.disabled = false;
+          slhBox.removeAttribute('title');
+          slhBox.checked = slhEnabled;
+        } else {
+          slhBox.disabled = true;
+          slhBox.checked = false;
+          slhBox.setAttribute('title', 'โหลดไลบรารี SLH-DSA ไม่ได้ (เบราว์เซอร์หรือแคชเก่า)');
+        }
+      };
+      slhEnabled = pref && Boolean(window.PQSLH);
+      applySlhBox();
+      // vendor เป็น deferred และใหญ่ (~40 KB + hashes): เน็ตช้าอาจมาถึงหลังบูต — พอถึงให้เปิดตัวเลือกเอง
       if (!window.PQSLH) {
-        slhBox.disabled = true;
-        slhBox.setAttribute('title', 'โหลดไลบรารี SLH-DSA ไม่ได้ (เบราว์เซอร์หรือแคชเก่า)');
+        window.addEventListener('pq-slh-ready', () => { slhEnabled = pref && Boolean(window.PQSLH); applySlhBox(); }, { once: true });
       }
       slhBox.addEventListener('change', () => {
         slhEnabled = slhBox.checked && Boolean(window.PQSLH);
